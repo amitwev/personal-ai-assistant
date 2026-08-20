@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Secrets — never commit
+.env
+*.env
+!.env.example
+appsettings.*.local.json
+
+# Test output
+[Tt]est[Rr]esult*/
+coverage*
+*.trx
+
+# OS
+.DS_Store
+Thumbs.db
