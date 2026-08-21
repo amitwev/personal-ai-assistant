@@ -8,15 +8,15 @@ public enum Priority
     /// <summary>
     /// Unset default. Never valid to persist or act on.
     /// </summary>
-    Unknown = 0,
+    Unknown,
 
     /// <summary>
     /// Default importance.
     /// </summary>
-    Normal = 1,
+    Normal,
 
     /// <summary>
     /// Raised importance. Surfaced first in listings and briefs.
     /// </summary>
-    High = 2,
+    High,
 }

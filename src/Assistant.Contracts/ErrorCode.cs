@@ -8,50 +8,50 @@ public enum ErrorCode
     /// <summary>
     /// Unset default. Never valid to persist or act on.
     /// </summary>
-    Unknown = 0,
+    Unknown,
 
     /// <summary>
     /// No error.
     /// </summary>
-    None = 1,
+    None,
 
     /// <summary>
     /// No task exists with the given identifier.
     /// </summary>
-    TaskNotFound = 2,
+    TaskNotFound,
 
     /// <summary>
     /// The task has already been completed, and the operation requires an open task.
     /// </summary>
-    TaskAlreadyCompleted = 3,
+    TaskAlreadyCompleted,
 
     /// <summary>
     /// The task has been cancelled, and the operation requires an open task.
     /// </summary>
-    TaskCancelled = 4,
+    TaskCancelled,
 
     /// <summary>
     /// The operation requires a due time and the task has none.
     /// </summary>
-    TaskHasNoDueTime = 5,
+    TaskHasNoDueTime,
 
     /// <summary>
     /// The supplied time is in the past.
     /// </summary>
-    TimeInPast = 6,
+    TimeInPast,
 
     /// <summary>
     /// The supplied time is implausibly far in the future.
     /// </summary>
-    TimeTooFarAhead = 7,
+    TimeTooFarAhead,
 
     /// <summary>
     /// The supplied text could not be parsed as a local ISO-8601 datetime.
     /// </summary>
-    TimeUnparseable = 8,
+    TimeUnparseable,
 
     /// <summary>
     /// Every language model provider failed.
     /// </summary>
-    LlmUnavailable = 9,
+    LlmUnavailable,
 }

@@ -8,20 +8,20 @@ public enum ReminderStatus
     /// <summary>
     /// Unset default. Never valid to persist or act on.
     /// </summary>
-    Unknown = 0,
+    Unknown,
 
     /// <summary>
     /// Outstanding. Eligible for reminder delivery.
     /// </summary>
-    Pending = 1,
+    Pending,
 
     /// <summary>
     /// Finished. No further reminders are delivered.
     /// </summary>
-    Completed = 2,
+    Completed,
 
     /// <summary>
     /// Abandoned without being done. No further reminders are delivered.
     /// </summary>
-    Cancelled = 3,
+    Cancelled,
 }
