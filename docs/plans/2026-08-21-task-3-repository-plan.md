@@ -58,7 +58,6 @@ must be corrected in three places:
 | Path | Responsibility |
 | :--- | :--- |
 | `compose.test.yaml` | Postgres 16 on fixed port 55432, with a healthcheck. |
-| `.config/dotnet-tools.json` | Pins `dotnet-ef` so migrations are reproducible. |
 | `src/Assistant.Repository/AssistantDbContext.cs` | The three `DbSet`s. Applies configurations. |
 | `src/Assistant.Repository/Configurations/ReminderTaskConfiguration.cs` | Table, columns, check constraints, partial index. |
 | `src/Assistant.Repository/Configurations/ChatMessageConfiguration.cs` | Table, columns, recency index. |
@@ -321,6 +320,22 @@ the requirement (`ReturnsOldestFirst`, `ReturnsNewestTrimmedOldestFirst`,
 `ReturnsItAfterDatedTasks`) must therefore use `Assert.Equal` on the projected sequence, never
 `Assert.Equivalent`. The `testing-strategy` skill has been updated to carry this warning.
 
+**D6 — RESOLVED: no `.config/dotnet-tools.json`. `dotnet-ef` is installed globally.**
+The parent plan's Step 1 runs `dotnet new tool-manifest` + `dotnet tool install dotnet-ef`. Both
+are dropped; the manifest is not created.
+
+**Prerequisite this creates:** the global `dotnet-ef` must be 10.x, because EF refuses to run a
+tool older than the runtime. This machine's global tool was 9.0.2 and has been upgraded to
+**10.0.11** (`dotnet tool update -g dotnet-ef --version 10.0.11`; verified `dotnet ef --version`
+reports 10.0.11). EF tooling is forward-compatible, so 10.0.11 still drives older EF Core
+projects on this machine.
+
+**Consequence for `AGENTS.md`:** its Prerequisites list currently names only the .NET 10 SDK and
+Docker, while the file documents `dotnet ef migrations add ...` as a working command. Without a
+manifest, that command needs a global `dotnet-ef` 10.x, so **Task 3 must add that prerequisite
+line to `AGENTS.md`** — spec §12.4 requires every documented command to state what it requires.
+This is the only cost of dropping the manifest, and it is one line.
+
 **D5 — RESOLVED: all three stay out of the solution.**
 No `.editorconfig`, no `global.json`, no Shouldly. Verified none of the three exists in the repo
 today, so this is "never add", not "remove". Concretely for Task 3:
@@ -337,8 +352,12 @@ today, so this is "never add", not "remove". Concretely for Task 3:
 
 Written after §3 is approved. Ordering follows the parent plan; the deltas are marked.
 
-- [ ] **Step 1: Packages and EF tool manifest** — parent Step 1, **minus** the Shouldly line.
+- [ ] **Step 1: Packages** — parent Step 1, with two removals:
+      **minus** the Shouldly line (D5), and **minus** `dotnet new tool-manifest` /
+      `dotnet tool install dotnet-ef` (D6 — no local tool manifest; `dotnet-ef` is global).
       Central package management is on, so move any inline `Version=` into `Directory.Packages.props`.
+      Pin EF Core to **10.0.11** and `Npgsql.EntityFrameworkCore.PostgreSQL` to **10.0.3** so the
+      runtime matches the global tool.
 - [ ] **Step 2: `compose.test.yaml`** — parent Step 2 verbatim. Verify with
       `docker compose -f compose.test.yaml up -d` and `docker compose ps`.
 - [ ] **Step 3: `AssistantDbContext`** — parent Step 3 verbatim.
@@ -352,7 +371,9 @@ Written after §3 is approved. Ordering follows the parent plan; the deltas are 
 - [ ] **Step 9: Write the tests from §3** — all three test classes. Run them and watch them fail
       first (`docker compose -f compose.test.yaml up -d` must be running).
 - [ ] **Step 10: Make them pass.** Full suite green: unit and integration.
-- [ ] **Step 11: Commit** — `feat: add repository, migrations, and integration test harness`.
+- [ ] **Step 11: Update `AGENTS.md` prerequisites** — add global `dotnet-ef` 10.x to the
+      Prerequisites list (D6). Verify every command in the section you touch still runs.
+- [ ] **Step 12: Commit** — `feat: add repository, migrations, and integration test harness`.
 
 ## 6. Verification
 
