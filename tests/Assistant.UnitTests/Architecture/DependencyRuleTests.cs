@@ -1,17 +1,22 @@
-using Assistant.Interfaces;
-using Assistant.Models;
+using System.Reflection;
 using NetArchTest.Rules;
 
 namespace Assistant.UnitTests.Architecture;
 
 public class DependencyRuleTests
 {
+    private static Assembly LoadProject(string name) =>
+        Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory, $"{name}.dll"));
+
+    private static Assembly ModelsAssembly => LoadProject("Assistant.Models");
+    private static Assembly InterfacesAssembly => LoadProject("Assistant.Interfaces");
+
     [Theory]
     [InlineData("Microsoft.EntityFrameworkCore")]
     [InlineData("Npgsql")]
     public void Models_do_not_depend_on_persistence_libraries(string forbidden)
     {
-        var result = Types.InAssembly(typeof(ReminderTask).Assembly)
+        var result = Types.InAssembly(ModelsAssembly)
             .ShouldNot().HaveDependencyOn(forbidden)
             .GetResult();
 
@@ -27,7 +32,7 @@ public class DependencyRuleTests
     [InlineData("Refit")]
     public void Interfaces_do_not_depend_on_infrastructure_libraries(string forbidden)
     {
-        var result = Types.InAssembly(typeof(IClock).Assembly)
+        var result = Types.InAssembly(InterfacesAssembly)
             .ShouldNot().HaveDependencyOn(forbidden)
             .GetResult();
 

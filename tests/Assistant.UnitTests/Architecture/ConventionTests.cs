@@ -1,15 +1,15 @@
 using System.Reflection;
-using Assistant.Contracts;
-using Assistant.Interfaces;
-using Assistant.Models;
 
 namespace Assistant.UnitTests.Architecture;
 
 public class ConventionTests
 {
-    private static Assembly ModelsAssembly => typeof(ReminderTask).Assembly;
-    private static Assembly InterfacesAssembly => typeof(IClock).Assembly;
-    private static Assembly ContractsAssembly => typeof(Result).Assembly;
+    private static Assembly LoadProject(string name) =>
+        Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory, $"{name}.dll"));
+
+    private static Assembly ModelsAssembly => LoadProject("Assistant.Models");
+    private static Assembly InterfacesAssembly => LoadProject("Assistant.Interfaces");
+    private static Assembly ContractsAssembly => LoadProject("Assistant.Contracts");
 
     [Fact]
     public void Models_declare_no_methods_beyond_property_accessors()

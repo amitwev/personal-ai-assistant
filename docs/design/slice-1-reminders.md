@@ -578,6 +578,8 @@ Each step ends with a working, tested system.
 
 Steps 1–7 deliver a reliable reminder system with no AI at all. If step 8 were dropped entirely, the product would still work. That ordering is intentional: the risky, expensive, non-deterministic component sits on top of a foundation already proven correct.
 
+Within each step, a type, interface member, model property, or table is introduced by the task that first exercises it with a test, not by an earlier step anticipating it (see the YAGNI reset, `docs/plans/2026-08-21-yagni-reset-plan.md`).
+
 ---
 
 ## 10. Deferred to later slices
