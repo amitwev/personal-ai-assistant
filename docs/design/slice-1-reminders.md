@@ -256,7 +256,7 @@ CREATE TABLE reminder_tasks (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title              TEXT NOT NULL,
     notes              TEXT,
-    status             INT NOT NULL DEFAULT 0,   -- 0 Pending, 1 Completed, 2 Cancelled
+    status             INT NOT NULL DEFAULT 1,   -- 0 Unknown (never persisted), 1 Pending, 2 Completed, 3 Cancelled
     priority           INT NOT NULL DEFAULT 1,   -- 1 Normal, 2 High
     due_at             TIMESTAMPTZ,              -- UTC; also the reminder time
     reminder_sent_at   TIMESTAMPTZ,              -- NULL = delivery still owed
@@ -266,14 +266,16 @@ CREATE TABLE reminder_tasks (
     completed_at       TIMESTAMPTZ,
 
     CONSTRAINT ck_completed_consistency
-        CHECK ((status = 1) = (completed_at IS NOT NULL)),
+        CHECK ((status = 2) = (completed_at IS NOT NULL)),
     CONSTRAINT ck_sent_requires_due
-        CHECK (reminder_sent_at IS NULL OR due_at IS NOT NULL)
+        CHECK (reminder_sent_at IS NULL OR due_at IS NOT NULL),
+    CONSTRAINT ck_status_known
+        CHECK (status <> 0)
 );
 
 CREATE INDEX idx_tasks_due_pending
     ON reminder_tasks (due_at)
-    WHERE status = 0 AND reminder_sent_at IS NULL;
+    WHERE status = 1 AND reminder_sent_at IS NULL;
 
 CREATE TABLE chat_messages (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
