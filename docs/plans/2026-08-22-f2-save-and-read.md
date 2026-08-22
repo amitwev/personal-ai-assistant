@@ -101,7 +101,7 @@ A test using `UtcNow` is a coin flip that depends on the host clock's resolution
 so the naive version passes locally and can fail on Linux CI. Every instant in these tests is
 therefore a literal with at most 6 fractional digits.
 
-### E. `Assert.Equivalent(expected, actual, strict: true)` is the round-trip assertion — plus one explicit offset check
+### E. `Assert.Equivalent(expected, actual, strict: true)` is the round-trip assertion — but it is blind to offsets
 
 `Assert.Equivalent` with `strict: true` compares every property, so a property added later is
 covered without editing the test. Measured behaviour in xUnit 2.9.3:
@@ -113,9 +113,9 @@ covered without editing the test. Measured behaviour in xUnit 2.9.3:
 | Nullable property silently dropped | `EquivalentException` |
 | **Same instant, different offset (`+03:00` vs `+00:00`)** | **passes — not detected** |
 
-That last row is why the test carries a separate assertion that each returned
-`DateTimeOffset.Offset` is `TimeSpan.Zero`. `DateTimeOffset` equality compares instants, so
-`Assert.Equivalent` alone cannot enforce the project's "UTC with a zero offset" rule.
+That last row is why `FindAsync_TaskWasAdded_ReturnsInstantsInUtc` is a separate test rather than
+an extra assertion. `DateTimeOffset` equality compares instants, so `Assert.Equivalent` cannot
+enforce the project's "UTC with a zero offset" rule no matter how strict it is.
 
 ### F. Correction to the backlog's F2 entry
 
@@ -147,7 +147,7 @@ forgets a field, versus a column mapping that forgets one. Task 4 corrects the c
 | `src/Assistant.Repository/Repositories/EfTaskRepository.cs` | **Create.** The only implementation. Internal sealed. |
 | `src/Assistant.Repository/RepositoryServiceCollectionExtensions.cs` | **Modify.** Register `ITaskRepository`. |
 | `tests/Assistant.IntegrationTests/Infrastructure/PostgresFixture.cs` | **Modify.** Add `CreateProvider()`. |
-| `tests/Assistant.IntegrationTests/Repositories/TaskRepositoryTests.cs` | **Create.** Round-trip, miss, and constraint tests. |
+| `tests/Assistant.IntegrationTests/Repositories/TaskRepositoryTests.cs` | **Create.** Four tests, `ITaskRepository` as the system under test. |
 | `tests/Assistant.IntegrationTests/Schema/ReminderTaskSchemaTests.cs` | **Modify.** Task 4 applies the retirement check. |
 | `docs/design/2026-08-22-slice-1-feature-backlog.md` | **Modify.** Record what F2 settled. |
 
@@ -160,23 +160,41 @@ forgets a field, versus a column mapping that forgets one. Task 4 corrects the c
 
 ## Test design
 
-**Equivalence classes for `FindAsync`:** the id matches a row (returns it), the id matches
-nothing (returns `null`). There is no third class — the parameter is a `Guid`, so there is no
-malformed input to partition and no boundary to probe.
+Four tests, one class, `ITaskRepository` as the system under test. Each documents one outcome.
 
-**Equivalence classes for `AddAsync`:** a row the constraints accept (persists), and a row
-`ck_reminder_tasks_status_known` rejects (throws). The second is the F1 carry-over.
+| Test | Act | What it documents |
+| :--- | :--- | :--- |
+| `FindAsync_TaskWasAdded_ReturnsTaskUnchanged` | `FindAsync` | Every property survives a save and a load. |
+| `FindAsync_TaskWasAdded_ReturnsInstantsInUtc` | `FindAsync` | Instants come back at a zero offset. |
+| `FindAsync_NoRowWithThatId_ReturnsNull` | `FindAsync` | A miss is null, not an exception. |
+| `AddAsync_StatusUnknown_RejectedByStatusConstraint` | `AddAsync` | A task with no status set is refused. |
+
+**Equivalence classes for `FindAsync`:** the id matches a row, or it matches nothing. There is no
+third class and no boundary to probe — the parameter is a `Guid`, so there is no ordering and no
+malformed input to partition.
+
+**Equivalence classes for `AddAsync`:** a row the constraints accept, and a row
+`ck_reminder_tasks_status_known` rejects.
+
+**Saving is arrangement, never the act.** The first two tests save in Arrange and call `FindAsync`
+in Act, so the name and the assertion both point at one method.
 
 **Deliberately not tested, and why:**
 
 | Not tested | Reason |
 | :--- | :--- |
-| Npgsql throwing on a non-zero `DateTimeOffset` offset | Framework behaviour. We assert *our* values come back at zero offset instead. |
-| `SaveChangesAsync` writing a row at all | Every test here depends on it; a separate assertion adds nothing. |
+| A separate "AddAsync writes a row" test | The round-trip's arrangement already proves it. Asserting it twice adds nothing. |
+| `UpdatedAt`'s offset | Same equivalence class as `CreatedAt` — a non-nullable instant. One representative is enough. |
+| Npgsql throwing on a non-zero offset passed *in* | Framework behaviour. We assert our own values come back at zero offset instead. |
 | Concurrent writers, transactions, retries | No feature has two writers yet. F5 introduces the single-writer rule. |
 | `ck_reminder_tasks_sent_requires_due` through the application | Unreachable until F5 sets `ReminderSentAt`. Its raw-SQL test stays. |
 
----
+**The weakest test is `FindAsync_TaskWasAdded_ReturnsInstantsInUtc`,** and it is worth naming why
+it survives review. The mechanism that makes it pass is Npgsql's, which edges toward testing a
+library. It stays because "all instants UTC with a zero offset" is a stated project invariant,
+because `Assert.Equivalent` was measured to be blind to it, and because what it actually guards is
+our own `HasColumnType("timestamptz")` choice in `ReminderTaskConfiguration`.
+
 
 ## Task 1: `FindAsync` on the interface, and `EfTaskRepository`
 
@@ -244,100 +262,159 @@ already has `Assistant.Repository` and `Microsoft.Extensions.DependencyInjection
     }
 ```
 
-- [ ] **Step 3: Write the failing round-trip test**
+- [ ] **Step 3: Write the failing tests**
 
-Create `tests/Assistant.IntegrationTests/Repositories/TaskRepositoryTests.cs`:
+Create `tests/Assistant.IntegrationTests/Repositories/TaskRepositoryTests.cs`.
+
+The system under test is a repository built in the constructor. Saving happens in **Arrange**,
+through a deliberately separate provider, so no test can be satisfied by the change tracker.
 
 ```csharp
 using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
 using Assistant.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Assistant.IntegrationTests.Repositories;
 
 /// <summary>
-/// Proves that a task survives a write and a read through separate database contexts.
+/// Test class for <see cref="ITaskRepository"/>.
 /// </summary>
 /// <remarks>
 /// Every instant here is a literal with at most six fractional digits. Postgres
 /// <c>timestamptz</c> holds microseconds while .NET ticks are 100ns, so a value taken from
-/// <c>DateTimeOffset.UtcNow</c> can be truncated on read, and whether it is depends on the host
-/// clock's resolution — which makes it pass on one machine and fail on another.
+/// <c>DateTimeOffset.UtcNow</c> can be truncated on read. Whether it is depends on the host
+/// clock's resolution, which is what would make such a test pass on one machine and fail on
+/// another.
 /// </remarks>
 [Collection(PostgresCollection.Name)]
 public sealed class TaskRepositoryTests : IAsyncLifetime
 {
     private readonly PostgresFixture _postgres;
+    private readonly ServiceProvider _provider;
+    private readonly ITaskRepository _sut;
 
-    public TaskRepositoryTests(PostgresFixture postgres) => _postgres = postgres;
+    public TaskRepositoryTests(PostgresFixture postgres)
+    {
+        _postgres = postgres;
+        _provider = postgres.CreateProvider();
+        _sut = _provider.GetRequiredService<ITaskRepository>();
+    }
 
     public Task InitializeAsync() => _postgres.ResetAsync();
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _provider.DisposeAsync();
 
     /// <summary>
-    /// When a task is added through one context
-    /// And read back through a different one
-    /// Then every property holds the value it was written with.
+    /// When a task has been saved
+    /// And it is looked up by its identifier
+    /// Then every property holds the value it was saved with.
     /// </summary>
     [Fact]
-    public async Task AddAsync_ThenFindAsync_PreservesEveryProperty()
+    public async Task FindAsync_TaskWasAdded_ReturnsTaskUnchanged()
     {
         // Arrange
-        var expected = new ReminderTask
-        {
-            Id = Guid.NewGuid(),
-            Title = "call the bank",
-            Status = ReminderStatus.Pending,
-            DueAt = new DateTimeOffset(2026, 8, 22, 10, 30, 0, TimeSpan.Zero),
-            ReminderSentAt = null,
-            CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-            UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-        };
-
-        await using (var writer = _postgres.CreateProvider())
-        {
-            await writer.GetRequiredService<ITaskRepository>()
-                .AddAsync(expected, CancellationToken.None);
-        }
+        var expected = BuildReminderTask();
+        await SaveThroughSeparateContextAsync(expected);
 
         // Act
-        await using var reader = _postgres.CreateProvider();
-        var actual = await reader.GetRequiredService<ITaskRepository>()
-            .FindAsync(expected.Id, CancellationToken.None);
+        var result = await _sut.FindAsync(expected.Id, CancellationToken.None);
 
         // Assert
-        Assert.NotNull(actual);
-        Assert.Equivalent(expected, actual, strict: true);
-        Assert.Equal(TimeSpan.Zero, actual.DueAt!.Value.Offset);
-        Assert.Equal(TimeSpan.Zero, actual.CreatedAt.Offset);
-        Assert.Equal(TimeSpan.Zero, actual.UpdatedAt.Offset);
+        Assert.Equivalent(expected, result, strict: true);
     }
 
     /// <summary>
-    /// When no row carries the requested identifier
-    /// And FindAsync is called with it
-    /// Then null is returned rather than an exception.
+    /// When a task has been saved
+    /// And it is looked up by its identifier
+    /// Then its instants are returned in UTC.
     /// </summary>
     [Fact]
-    public async Task FindAsync_IdMatchesNothing_ReturnsNull()
+    public async Task FindAsync_TaskWasAdded_ReturnsInstantsInUtc()
     {
         // Arrange
-        await using var provider = _postgres.CreateProvider();
-        var repository = provider.GetRequiredService<ITaskRepository>();
+        var reminderTask = BuildReminderTask();
+        await SaveThroughSeparateContextAsync(reminderTask);
 
         // Act
-        var actual = await repository.FindAsync(Guid.NewGuid(), CancellationToken.None);
+        var result = await _sut.FindAsync(reminderTask.Id, CancellationToken.None);
 
         // Assert
-        Assert.Null(actual);
+        Assert.Equal(TimeSpan.Zero, result!.DueAt!.Value.Offset);
+        Assert.Equal(TimeSpan.Zero, result.CreatedAt.Offset);
+    }
+
+    /// <summary>
+    /// When no task carries the requested identifier
+    /// And it is looked up by that identifier
+    /// Then nothing is returned.
+    /// </summary>
+    [Fact]
+    public async Task FindAsync_NoRowWithThatId_ReturnsNull()
+    {
+        // Act
+        var result = await _sut.FindAsync(Guid.NewGuid(), CancellationToken.None);
+
+        // Assert
+        Assert.Null(result);
+    }
+
+    private static ReminderTask BuildReminderTask() => new()
+    {
+        Id = Guid.NewGuid(),
+        Title = "call the bank",
+        Status = ReminderStatus.Pending,
+        DueAt = new DateTimeOffset(2026, 8, 22, 10, 30, 0, TimeSpan.Zero),
+        ReminderSentAt = null,
+        CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
+        UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
+    };
+
+    /// <summary>
+    /// Saves a task through a provider of its own, then disposes it.
+    /// </summary>
+    /// <param name="reminderTask">The task to save.</param>
+    /// <returns>A task that completes once the row has been written and the context is gone.</returns>
+    /// <remarks>
+    /// Arrangement, not the act. Writing through a second context is what stops the change
+    /// tracker answering the read from memory and turning a round-trip assertion into a
+    /// comparison of an object with itself.
+    /// </remarks>
+    private async Task SaveThroughSeparateContextAsync(ReminderTask reminderTask)
+    {
+        await using var writer = _postgres.CreateProvider();
+        await writer.GetRequiredService<ITaskRepository>()
+            .AddAsync(reminderTask, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Walks an exception chain to the provider exception underneath it.
+    /// </summary>
+    /// <param name="exception">The exception the repository threw.</param>
+    /// <returns>The innermost <see cref="PostgresException"/>, or null if there is none.</returns>
+    /// <remarks>
+    /// Entity Framework wraps provider exceptions, but this project cannot name the wrapper: the
+    /// EF packages are marked <c>PrivateAssets="compile"</c> in Assistant.Repository, so they do
+    /// not flow here at compile time. Asserting on the Npgsql exception is the stronger test
+    /// anyway, because it does not depend on how EF chooses to wrap.
+    /// </remarks>
+    private static PostgresException? FindPostgresException(Exception? exception)
+    {
+        while (exception is not null and not PostgresException)
+        {
+            exception = exception.InnerException;
+        }
+
+        return exception as PostgresException;
     }
 }
 ```
 
-The three `Offset` assertions exist because `Assert.Equivalent` treats `+03:00` and `+00:00` as
-equal when they name the same instant — measured, see Decision E.
+`FindPostgresException` has no caller until Task 2, which is why it is written here but exercised
+there. `FindAsync_TaskWasAdded_ReturnsInstantsInUtc` exists as its own test because
+`Assert.Equivalent` is blind to the offset — see Decision E — and because "every property
+survives" and "instants come back in UTC" are two different requirements.
 
 - [ ] **Step 4: Run the tests and watch them fail**
 
@@ -424,14 +501,15 @@ dotnet build
 dotnet test tests/Assistant.IntegrationTests
 ```
 
-Expected: `0 Warning(s)`, `0 Error(s)`, 4 tests passing — the 2 schema tests from F1 plus the 2
+Expected: `0 Warning(s)`, `0 Error(s)`, 5 tests passing — the 2 schema tests from F1 plus the 3
 added here.
 
-- [ ] **Step 8: Prove the round-trip test can actually fail**
+- [ ] **Step 8: Prove `FindAsync_TaskWasAdded_ReturnsTaskUnchanged` can actually fail**
 
 This is the step that decides whether Task 1 delivered anything. Temporarily add
-`builder.Ignore(x => x.ReminderSentAt);` to `ReminderTaskConfiguration.Configure`, set the test's
-`ReminderSentAt` to `new DateTimeOffset(2026, 8, 22, 10, 31, 0, TimeSpan.Zero)`, and run.
+`builder.Ignore(x => x.ReminderSentAt);` to `ReminderTaskConfiguration.Configure`, and change
+`BuildReminderTask()` so `ReminderSentAt` is
+`new DateTimeOffset(2026, 8, 22, 10, 31, 0, TimeSpan.Zero)` instead of null. Run the suite.
 
 Expected: `EquivalentException` naming member `ReminderSentAt`.
 
@@ -450,77 +528,49 @@ git commit -m "feat: add and read back a task through EfTaskRepository"
 
 ---
 
-## Task 2: `AddAsync` surfaces the status constraint
+## Task 2: `AddAsync` refuses a task whose status was never set
 
 **Files:**
 - Modify: `tests/Assistant.IntegrationTests/Repositories/TaskRepositoryTests.cs`
 
 **Interfaces:**
-- Consumes: `ITaskRepository.AddAsync`, `PostgresFixture.CreateProvider()` (Task 1).
+- Consumes: `ITaskRepository.AddAsync`, `BuildReminderTask()`, `FindPostgresException()` (Task 1).
 - Produces: nothing new.
 
-This is the follow-up the F1 review deferred: the constraint is currently proven only by a
-raw-SQL insert, which says nothing about what happens when application code produces the row.
-`new ReminderTask()` has `Status = Unknown` by the enum convention, so forgetting to set the
-status is the easiest mistake a caller can make.
+This is the follow-up the F1 review deferred: the constraint is proven only by a raw-SQL insert,
+which says nothing about what application code sees. `ReminderStatus.Unknown` is what a caller
+gets by forgetting to set a status, so this is the easiest mistake to make.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the test**
 
-Add to `TaskRepositoryTests`, and add `using Npgsql;` to the file's usings:
+Add one method to `TaskRepositoryTests`, above the private helpers:
 
 ```csharp
     /// <summary>
-    /// When a task is added with the Unknown status a caller gets by forgetting to set one
-    /// And AddAsync writes it
-    /// Then the database refuses the row, naming ck_reminder_tasks_status_known.
+    /// When a task is saved with no status set
+    /// Then it is refused, naming the status constraint.
     /// </summary>
     [Fact]
-    public async Task AddAsync_StatusLeftUnknown_IsRejectedByTheDatabase()
+    public async Task AddAsync_StatusUnknown_RejectedByStatusConstraint()
     {
         // Arrange
-        await using var provider = _postgres.CreateProvider();
-        var repository = provider.GetRequiredService<ITaskRepository>();
-        var task = new ReminderTask
-        {
-            Id = Guid.NewGuid(),
-            Title = "status never set",
-            CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-            UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-        };
+        var reminderTask = BuildReminderTask();
+        reminderTask.Status = ReminderStatus.Unknown;
 
         // Act
-        var ex = await Assert.ThrowsAnyAsync<Exception>(
-            () => repository.AddAsync(task, CancellationToken.None));
+        var exception = await Assert.ThrowsAnyAsync<Exception>(
+            () => _sut.AddAsync(reminderTask, CancellationToken.None));
 
         // Assert
-        var postgres = FindPostgresException(ex);
-        Assert.NotNull(postgres);
-        Assert.Equal("ck_reminder_tasks_status_known", postgres.ConstraintName);
-    }
-
-    /// <summary>
-    /// Walks an exception chain to the provider exception underneath it.
-    /// </summary>
-    /// <param name="ex">The exception the repository threw.</param>
-    /// <returns>The innermost <see cref="PostgresException"/>, or null if there is none.</returns>
-    /// <remarks>
-    /// Entity Framework wraps provider exceptions, but this project cannot name the wrapper:
-    /// the EF packages are marked <c>PrivateAssets="compile"</c> in Assistant.Repository, so
-    /// they do not flow here at compile time. Asserting on the Npgsql exception is the stronger
-    /// test anyway, because it does not depend on how EF chooses to wrap.
-    /// </remarks>
-    private static PostgresException? FindPostgresException(Exception? ex)
-    {
-        while (ex is not null and not PostgresException)
-        {
-            ex = ex.InnerException;
-        }
-
-        return ex as PostgresException;
+        Assert.Equal(
+            "ck_reminder_tasks_status_known",
+            FindPostgresException(exception)!.ConstraintName);
     }
 ```
 
-Note `Status` is not assigned at all — that is the point of the test.
+`BuildReminderTask()` returns a valid task and the test overrides exactly one property, which is
+what marks `Status` as the input under test. The null check is folded into the assertion: if no
+`PostgresException` is in the chain, the test fails there, which is the correct outcome.
 
 - [ ] **Step 2: Run it**
 
@@ -529,9 +579,9 @@ dotnet test tests/Assistant.IntegrationTests
 ```
 
 This test passes on its first run, because the constraint and `AddAsync` both already exist.
-That is expected and is not a TDD failure: the test documents a decision (Decision B — the
-exception propagates untranslated) rather than driving new production code. Task 3 is what proves
-it can fail.
+That is expected and is not a TDD failure: it documents a decision (Decision B — the exception
+propagates untranslated) rather than driving new production code. Task 3 is what proves it can
+fail.
 
 **Do not add an EF Core package reference to the test project to name `DbUpdateException`.** It
 will not compile, and this was measured rather than assumed:
@@ -553,8 +603,6 @@ weaken the boundary to buy a weaker assertion.
 git add tests/Assistant.IntegrationTests/Repositories/TaskRepositoryTests.cs
 git commit -m "test: prove AddAsync surfaces the status constraint untranslated"
 ```
-
----
 
 ## Task 3: Apply the retirement check to the F1 raw-SQL test
 
@@ -589,7 +637,7 @@ volume the old constraint is still there and the check proves nothing.
 
 - [ ] **Step 2: Act on the result**
 
-- **If `AddAsync_StatusLeftUnknown_IsRejectedByTheDatabase` fails** — the new test covers the
+- **If `AddAsync_StatusUnknown_RejectedByStatusConstraint` fails** — the new test covers the
   constraint, so delete `Insert_StatusUnknown_ViolatesStatusKnownConstraint` and remove its
   `<remarks>` block. Update the class-level `<remarks>` so it refers only to the remaining test.
 - **If only `Insert_StatusUnknown_ViolatesStatusKnownConstraint` fails** — the raw-SQL test is
@@ -638,8 +686,8 @@ dotnet test tests/Assistant.UnitTests
 dotnet test tests/Assistant.IntegrationTests
 ```
 
-Expected: `0 Warning(s)`, `0 Error(s)`, 12 unit tests, and 4 or 5 integration tests depending on
-Task 3's outcome.
+Expected: `0 Warning(s)`, `0 Error(s)`, 12 unit tests, and 5 or 6 integration tests depending on
+Task 3's outcome — 4 added by F2, plus the 2 schema tests from F1 unless Task 3 retires one.
 
 - [ ] **Step 4: Commit and open the pull request**
 
@@ -666,7 +714,9 @@ outcome rather than naming one — each spells out both branches and what to do 
 a decision procedure, not a placeholder.
 
 **Type consistency.** `ITaskRepository.FindAsync(Guid, CancellationToken)` → `Task<ReminderTask?>`
-is used identically in the interface, `EfTaskRepository`, and all three tests.
+is used identically in the interface, `EfTaskRepository`, and all three `FindAsync` tests.
+`BuildReminderTask()` and `FindPostgresException()` are declared in Task 1 and consumed in
+Task 2; Task 2's step list names both as inputs it consumes.
 `PostgresFixture.CreateProvider()` returns `ServiceProvider` (not `IServiceProvider`) because the
 tests `await using` it, and `IServiceProvider` is not disposable.
 
