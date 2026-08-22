@@ -21,19 +21,9 @@ public sealed class ReminderTask
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional longer detail.
-    /// </summary>
-    public string? Notes { get; set; }
-
-    /// <summary>
     /// Current lifecycle state.
     /// </summary>
     public ReminderStatus Status { get; set; }
-
-    /// <summary>
-    /// Relative importance.
-    /// </summary>
-    public Priority Priority { get; set; }
 
     /// <summary>
     /// When the task is due, in UTC. Also the instant at which its reminder is delivered.
@@ -51,11 +41,6 @@ public sealed class ReminderTask
     public DateTimeOffset? ReminderSentAt { get; set; }
 
     /// <summary>
-    /// Number of failed delivery attempts for the current <see cref="DueAt"/>.
-    /// </summary>
-    public int DeliveryAttempts { get; set; }
-
-    /// <summary>
     /// When the task was created, in UTC.
     /// </summary>
     public DateTimeOffset CreatedAt { get; set; }
@@ -64,10 +49,4 @@ public sealed class ReminderTask
     /// When the task was last modified, in UTC.
     /// </summary>
     public DateTimeOffset UpdatedAt { get; set; }
-
-    /// <summary>
-    /// When the task was completed, in UTC.
-    /// </summary>
-    /// <value><see langword="null"/> unless <see cref="Status"/> is <see cref="ReminderStatus.Completed"/>.</value>
-    public DateTimeOffset? CompletedAt { get; set; }
 }

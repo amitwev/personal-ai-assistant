@@ -6,6 +6,10 @@
 **Goal:** Reduce the codebase to exactly what the next deliverable exercises, and adopt a
 standing rule that keeps it that way.
 
+> Arithmetic correction: an earlier revision of this document said "24 files" and "→ 5". The
+> named lists in §4 and §10 were always right — 23 deletions, 4 survivors, from 27 starting
+> files in `src/`. The counts have been corrected to match the lists.
+
 **Spec:** `docs/design/slice-1-reminders.md` (unchanged — it describes the target design,
 not the build order).
 
@@ -52,7 +56,7 @@ extension point — at which moment it is a seam rather than a guess.
 All eight projects stay. The project skeleton *is* the architecture (spec §3.2), it is enforced
 by tests, and empty projects cost nothing. We delete types, not the frame.
 
-## 4. What gets deleted — 24 files
+## 4. What gets deleted — 23 files
 
 **`src/Assistant.Contracts/` — all 9 files.** The project is left empty.
 `CreateTaskRequest` `DailyBriefNotification` `ErrorCode` `ListTasksRequest`
@@ -161,7 +165,7 @@ Note: this makes `main` non-pushable directly — including for us. That is the 
 
 1. `dotnet build` — 0 warnings.
 2. `dotnet test tests/Assistant.UnitTests` — 12/12.
-3. `find src -name '*.cs' -not -path '*/bin/*' -not -path '*/obj/*' | wc -l` → **5**
+3. `find src -name '*.cs' -not -path '*/bin/*' -not -path '*/obj/*' | wc -l` → **4**
    (`ReminderTask`, `ReminderStatus`, `ITaskRepository`, `Program.cs`, and nothing else).
 4. `ls src/Assistant.Contracts/*.cs` → no matches.
 5. `grep -c Repository src/Assistant.Impl/Assistant.Impl.csproj` → 0.
