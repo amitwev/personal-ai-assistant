@@ -621,41 +621,52 @@ git commit -m "test: prove AddAsync surfaces the status constraint untranslated"
 
 `ReminderTaskSchemaTests` carries `<remarks>` describing exactly this check. Task 3 runs it.
 
-- [ ] **Step 1: Run the check**
+**Drop the constraint in the database, not in the configuration.** An earlier draft of this task
+edited `ReminderTaskConfiguration` and regenerated the migration. Do not do that: `dotnet ef
+migrations add` writes a new timestamped filename, so the result can never be byte-identical to
+the committed one, and editing the configuration causes model drift that trips
+`PendingModelChangesWarning` before any test runs. Dropping the constraint with SQL changes only
+the database, leaves the model and migration untouched, and proves exactly the same thing.
 
-Temporarily delete this line from `ReminderTaskConfiguration.Configure`:
-
-```csharp
-t.HasCheckConstraint("ck_reminder_tasks_status_known", "status <> 0");
-```
-
-Then regenerate the migration and run the full suite:
+- [ ] **Step 1: Drop the constraint and run the suite**
 
 ```bash
-dotnet ef migrations remove --force --project src/Assistant.Repository --startup-project src/Assistant.Worker
-dotnet ef migrations add InitialCreate --project src/Assistant.Repository --startup-project src/Assistant.Worker
-docker compose -f compose.test.yaml down -v && docker compose -f compose.test.yaml up -d
+docker compose -f compose.test.yaml exec -T postgres-test \
+  psql -U assistant -d assistant_test \
+  -c "ALTER TABLE reminder_tasks DROP CONSTRAINT ck_reminder_tasks_status_known;"
 dotnet test tests/Assistant.IntegrationTests
 ```
 
-The `down -v` matters: Respawn truncates tables but does not drop constraints, so without a fresh
-volume the old constraint is still there and the check proves nothing.
+The fixture's `MigrateAsync()` will not put it back — the migration is already recorded as
+applied — and Respawn truncates rows without touching constraints. So the drop survives the run.
+
+Record which tests failed. That is the whole output of this task.
 
 - [ ] **Step 2: Act on the result**
 
 - **If `AddAsync_StatusUnknown_RejectedByStatusConstraint` fails** — the new test covers the
-  constraint, so delete `Insert_StatusUnknown_ViolatesStatusKnownConstraint` and remove its
-  `<remarks>` block. Update the class-level `<remarks>` so it refers only to the remaining test.
+  constraint, so delete `Insert_StatusUnknown_ViolatesStatusKnownConstraint` and its `<remarks>`
+  block. Update the class-level `<remarks>` so it refers only to the remaining test.
 - **If only `Insert_StatusUnknown_ViolatesStatusKnownConstraint` fails** — the raw-SQL test is
   still the sole guard. Keep it, and replace its `<remarks>` with a line recording that the check
-  was run at F2 and it stays.
+  was run at F2 and the test stays.
+
+Both failing is the expected outcome, and it means the first branch applies: the new test covers
+it, so the raw-SQL one goes.
 
 - [ ] **Step 3: Restore and verify**
 
-Put the `HasCheckConstraint` line back, regenerate the migration, recreate the volume, and run
-the suite. The generated migration must be byte-identical to the committed one — confirm with
-`git diff src/Assistant.Repository/Migrations/`. If it is not, stop and investigate before
-committing; a changed migration hash means the schema moved.
+```bash
+docker compose -f compose.test.yaml down -v
+docker compose -f compose.test.yaml up -d
+dotnet build
+dotnet test tests/Assistant.IntegrationTests
+```
+
+`down -v` discards the volume so the next `MigrateAsync()` rebuilds the schema from the migration
+with the constraint present. Confirm `git status` shows no change under
+`src/Assistant.Repository/` — if it does, something edited the model or the migration and this
+task went wrong.
 
 - [ ] **Step 4: Commit**
 
