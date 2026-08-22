@@ -28,4 +28,17 @@ internal sealed class EfTaskRepository(AssistantDbContext db) : ITaskRepository
         db.ReminderTasks
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Id == id, ct);
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<ReminderTask>> GetDueRemindersAsync(
+        DateTimeOffset asOfUtc, int limit, CancellationToken ct) =>
+        await db.ReminderTasks
+            .AsNoTracking()
+            .Where(t => t.Status == ReminderStatus.Pending
+                        && t.DueAt != null
+                        && t.DueAt <= asOfUtc
+                        && t.ReminderSentAt == null)
+            .OrderBy(t => t.DueAt)
+            .Take(limit)
+            .ToListAsync(ct);
 }
