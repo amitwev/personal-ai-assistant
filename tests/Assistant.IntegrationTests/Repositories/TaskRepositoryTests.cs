@@ -88,6 +88,27 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
         Assert.Null(result);
     }
 
+    /// <summary>
+    /// When a task is saved with no status set
+    /// Then it is refused, naming the status constraint.
+    /// </summary>
+    [Fact]
+    public async Task AddAsync_StatusUnknown_RejectedByStatusConstraint()
+    {
+        // Arrange
+        var reminderTask = BuildReminderTask();
+        reminderTask.Status = ReminderStatus.Unknown;
+
+        // Act
+        var exception = await Assert.ThrowsAnyAsync<Exception>(
+            () => _sut.AddAsync(reminderTask, CancellationToken.None));
+
+        // Assert
+        Assert.Equal(
+            "ck_reminder_tasks_status_known",
+            FindPostgresException(exception)!.ConstraintName);
+    }
+
     private static ReminderTask BuildReminderTask() => new()
     {
         Id = Guid.NewGuid(),
