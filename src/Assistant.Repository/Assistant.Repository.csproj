@@ -6,9 +6,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" PrivateAssets="compile" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" PrivateAssets="all" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" PrivateAssets="compile" />
   </ItemGroup>
 
   <PropertyGroup>
