@@ -1,0 +1,19 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/Assistant.Contracts/Assistant.Contracts.csproj" />
+    <Project Path="src/Assistant.Impl/Assistant.Impl.csproj" />
+    <Project Path="src/Assistant.Interfaces/Assistant.Interfaces.csproj" />
+    <Project Path="src/Assistant.Models/Assistant.Models.csproj" />
+    <Project Path="src/Assistant.Repository/Assistant.Repository.csproj" />
+    <Project Path="src/Assistant.Worker/Assistant.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Assistant.IntegrationTests/Assistant.IntegrationTests.csproj" />
+    <Project Path="tests/Assistant.UnitTests/Assistant.UnitTests.csproj" />
+  </Folder>
+</Solution>

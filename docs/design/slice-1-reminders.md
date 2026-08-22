@@ -78,7 +78,7 @@ This inverts the roadmap in the original spec, where proactive reminders were Ph
 ### 3.1 Projects
 
 ```
-PersonalAssistant.sln
+PersonalAssistant.slnx
 ├─ Directory.Build.props        net10.0, nullable enable, warnings-as-errors
 ├─ Directory.Packages.props     central package version management
 ├─ src/
@@ -125,7 +125,7 @@ builder.Services.AddAssistantServices();                     // from Impl
 
 Two constraints preserve the boundary:
 
-1. `Repository`'s public surface is exactly its repository implementations plus `AddAssistantRepository(this IServiceCollection, string connectionString)`, which registers `AppDbContext` and applies migrations internally. `Worker` never names an EF type; `Repository`'s EF package references are marked `PrivateAssets="all"` so nothing flows outward.
+1. `Repository`'s public surface is exactly its repository implementations plus `AddAssistantRepository(this IServiceCollection, string connectionString)`, which registers `AppDbContext` and applies migrations internally. `Worker` never names an EF type; `Repository`'s EF package references are marked `PrivateAssets="compile"` so their compile-time assets do not flow outward while their runtime assets still do. **Not `"all"`** — that withholds the runtime assets too, so `Npgsql.EntityFrameworkCore.PostgreSQL.dll` is never copied to `Worker`'s output and `UseNpgsql` throws at startup. Verified empirically in F1: with `"all"` the provider assembly is absent from `Worker`'s output; with `"compile"` it is present and naming a `DbContext` in `Worker` source still fails to compile (CS0234), which is the property this rule exists to protect.
 2. Repository methods return **materialised** results — `IReadOnlyList<ReminderTask>`, never `IQueryable<T>`. A queryable would leak EF back out through the interface and move query composition into the services.
 
 The one case that would genuinely force a reference is a transaction spanning multiple repository calls. Slice 1 has none — capture is a single write, reminder delivery is send-then-single-update, the daily brief is one insert. Should one arise later, the answer is an `IUnitOfWork` in `Interfaces`, not a project reference.
@@ -536,7 +536,7 @@ With services and adapters sharing one assembly, these are load-bearing rather t
 - `Impl.Telegram` or `Impl.Ai` referencing repository interfaces
 - `Impl.Services.Jobs` or `Impl.Services.Actions` referencing repository interfaces — they go through `ITaskService` (§4.2)
 
-Without these, this layout drifts into a single tangled project. The `PrivateAssets="all"` hiding in §3.2 covers the EF rules at compile time; the rest are tests.
+Without these, this layout drifts into a single tangled project. The `PrivateAssets="compile"` hiding in §3.2 covers the EF rules at compile time; the rest are tests.
 
 ### 7.6 Prompt evaluation
 
