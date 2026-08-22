@@ -61,20 +61,32 @@ under budget, both meaningful alone.
 
 **F1 · Database schema and the integration test harness** — spec §4.3, §7.1
 Adds `AssistantDbContext`, `ReminderTaskConfiguration`, the `reminder_tasks` table with its check
-constraints and partial index, the first migration, `AddAssistantRepository`, `compose.test.yaml`,
-and `PostgresFixture` (readiness polling + Respawn reset). No repository methods.
-*Tests:* migrations apply cleanly against a real Postgres; each check constraint rejects a
-malformed row inserted by raw SQL. Raw SQL is correct here — the point is to write data the
-mapping would never produce.
+constraints, the first migration, `AddAssistantRepository`, `compose.test.yaml`, and
+`PostgresFixture` (readiness polling + Respawn reset). No repository methods. The partial index
+belongs to F3, which is the first feature to run a query that needs it.
+*Tests:* each check constraint rejects a malformed row inserted by raw SQL. Raw SQL is correct
+here — the point is to write data the mapping would never produce. That migrations apply cleanly
+is proven by the fixture itself, which calls `MigrateAssistantDatabaseAsync()` during collection
+setup: if it fails, every integration test fails in setup. A test asserting the column list was
+written and then removed — it hardcoded the column names, so it failed when a column was added
+and migrated correctly, and passed when a property was added with no migration at all. The
+defect it was meant to catch is caught by F2's round-trip.
 
 **F2 · Save a task and read it back** — spec §4.1, §4.4
 `ITaskRepository.AddAsync` and `FindAsync`, plus `EfTaskRepository`.
 *Tests:* a round-trip preserves every field. This is the test that fails when a column is added
 and the mapping forgets it (spec §4.4 names that as the predictable defect).
+*Carried from F1:* `ck_reminder_tasks_status_known` is currently proven only by a raw-SQL insert,
+which shows the database blocks `Status.Unknown` but not what the application does about it.
+`new ReminderTask()` has `Status = Unknown` by the enum convention, so `AddAsync` is the first
+place a caller can produce that row by simply forgetting to set the status. Add a test that goes
+through `AddAsync`. Decide while planning F2 whether the caller sees a raw `PostgresException` or
+a translated error — the test asserts whichever is chosen, but it must be a deliberate choice.
 
 **F3 · Find the tasks that are due** — spec §6.2
-`ITaskRepository.GetDueRemindersAsync(asOfUtc, limit, ct)`. No lower bound on `due_at` — that
-absence is what makes restart catch-up automatic.
+`ITaskRepository.GetDueRemindersAsync(asOfUtc, limit, ct)`, plus the `idx_tasks_due_pending`
+partial index the query needs. No lower bound on `due_at` — that absence is what makes restart
+catch-up automatic.
 *Tests:* eligible vs ineligible by equivalence class, with boundaries on `due_at <= now`;
 ordering oldest-first; the limit.
 
@@ -93,6 +105,12 @@ marking a reminder sent must go through `ITaskService.MarkReminderSentAsync`. Th
 `ITaskRepository` gains `UpdateAsync`.
 *Tests:* a due task produces exactly one message; a second tick produces none; a process
 restarted after the due time still delivers.
+*Carried from F1:* `ck_reminder_tasks_sent_requires_due` is currently proven only by a raw-SQL
+insert. `MarkReminderSentAsync` is the only code that ever sets `ReminderSentAt`, so it is the
+one place the application can violate that rule. Note the path is unreachable through the
+scheduler — `GetDueRemindersAsync` filters on `due_at <= now`, so a task without a due time never
+reaches the job. The test therefore calls the service directly with a task that has no due time,
+covering the public surface rather than the scheduler's route through it.
 **Milestone: the product works.** Seed a row, watch your phone.
 
 **F6 · Complete a task from a button ▶ observable** — spec §6.4

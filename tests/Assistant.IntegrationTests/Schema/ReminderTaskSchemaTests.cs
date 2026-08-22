@@ -18,39 +18,6 @@ public sealed class ReminderTaskSchemaTests : IAsyncLifetime
     public Task DisposeAsync() => Task.CompletedTask;
 
     /// <summary>
-    /// When the InitialCreate migration has been applied to an empty database
-    /// And information_schema.columns is queried for reminder_tasks
-    /// Then exactly the 7 expected columns are present.
-    /// </summary>
-    [Fact]
-    public async Task Migration_AppliedToEmptyDatabase_CreatesReminderTasksTable()
-    {
-        // Arrange
-        var expectedColumns = new[]
-        {
-            "id", "title", "status", "due_at", "reminder_sent_at", "created_at", "updated_at",
-        };
-        await using var connection = new NpgsqlConnection(_postgres.ConnectionString);
-        await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText =
-            "SELECT column_name FROM information_schema.columns WHERE table_name = 'reminder_tasks'";
-
-        // Act
-        var actualColumns = new List<string>();
-        await using (var reader = await command.ExecuteReaderAsync())
-        {
-            while (await reader.ReadAsync())
-            {
-                actualColumns.Add(reader.GetString(0));
-            }
-        }
-
-        // Assert
-        Assert.Equal(expectedColumns.OrderBy(c => c, StringComparer.Ordinal), actualColumns.OrderBy(c => c, StringComparer.Ordinal));
-    }
-
-    /// <summary>
     /// When a row is inserted with status 0 (Unknown)
     /// And the insert is attempted directly with raw SQL
     /// Then it throws, naming ck_reminder_tasks_status_known as the violated constraint.
