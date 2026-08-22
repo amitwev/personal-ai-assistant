@@ -741,8 +741,13 @@ tests `await using` it, and `IServiceProvider` is not disposable.
 could name `DbUpdateException`. Measured: it cannot (`CS0234`), because `PrivateAssets="compile"`
 keeps EF Core out of every consumer's compile surface. The task now states one path.
 
-**Remaining risk.** Task 3 Step 3 requires the regenerated migration to be byte-identical to the
-committed one. EF migration scaffolding embeds a timestamp in the *file name*, and Task 3
-regenerates under the same name via `migrations remove` first — but if the regenerated file
-differs in any way beyond formatting, the task says stop rather than commit, which is the right
-failure mode.
+**Also resolved.** This paragraph previously described a risk in an earlier Task 3 that
+regenerated the migration. That approach was abandoned before execution: `dotnet ef migrations
+add` writes a new timestamped filename, so "byte-identical to the committed one" was never
+satisfiable, and editing the configuration causes the model drift that trips
+`PendingModelChangesWarning`. Task 3 now drops the constraint with `ALTER TABLE`, which touches
+only the database.
+
+**Outcome.** Task 3 ran as predicted: dropping `ck_reminder_tasks_status_known` failed both
+`AddAsync_StatusUnknown_RejectedByStatusConstraint` and
+`Insert_StatusUnknown_ViolatesStatusKnownConstraint`, so the raw-SQL test was retired.

@@ -76,20 +76,34 @@ property was added with no migration. It would not. EF Core raises
 `MigrateAsync()` fails and every integration test fails in setup. The framework already refuses
 the case, which makes the removed test redundant twice over rather than once.
 
-**F2 · Save a task and read it back** — spec §4.1, §4.4
-`ITaskRepository.AddAsync` and `FindAsync`, plus `EfTaskRepository`.
-*Tests:* a round-trip preserves every field. This is the test that fails when a column is added
-and the mapping forgets it (spec §4.4 names that as the predictable defect).
-*Carried from F1:* `ck_reminder_tasks_status_known` is currently proven only by a raw-SQL insert,
-which shows the database blocks `Status.Unknown` but not what the application does about it.
-`new ReminderTask()` has `Status = Unknown` by the enum convention, so `AddAsync` is the first
-place a caller can produce that row by simply forgetting to set the status. Add a test that goes
-through `AddAsync`. Decide while planning F2 whether the caller sees a raw `PostgresException` or
-a translated error — the test asserts whichever is chosen, but it must be a deliberate choice.
+**F2 · Save a task and read it back** — spec §4.1, §4.3 · **done**
+`ITaskRepository.AddAsync` and `FindAsync`, plus `EfTaskRepository`. `GetDueRemindersAsync` was
+removed from the interface here: nothing implemented or called it, and C# would have forced a
+`NotImplementedException` body or F3's query written untested. F3 re-adds it.
+*Tests:* four, one outcome each. A round-trip through two separate contexts preserves every
+property; instants come back at a zero offset; a miss returns null; a task whose status was never
+set is refused by `ck_reminder_tasks_status_known`.
+*Citation corrected:* an earlier draft cited §4.4 here. §4.4's round-trip is model → response →
+model, the hand-written `Contracts` mapper, which arrives at F10. F2's is model → Postgres →
+model. Different defects: a mapper that forgets a field, versus a column mapping that forgets one.
+*Settled at F2:*
+- **`AddAsync` surfaces the database exception untranslated.** `Result` and `ErrorCode` live in
+  `Contracts`, which F5 brings to life with `TaskService`; inventing them here would build types
+  nothing consumes for three features. Translation belongs to the single writer, not the
+  repository.
+- **`FindAsync` reads with `AsNoTracking`**, and tests write through one provider and read
+  through another. Sharing a context lets EF's identity map answer the read from memory, which
+  would turn the round-trip assertion into a comparison of an object with itself.
+- **Instants in tests are microsecond-aligned literals.** Postgres `timestamptz` holds
+  microseconds, .NET ticks are 100ns, and `UtcNow` truncates on read depending on the host
+  clock — passing on one machine and failing on another.
+- **The F1 carry-over is discharged.** Dropping `ck_reminder_tasks_status_known` from the
+  database failed both the raw-SQL test and the new `AddAsync` one, so the raw-SQL test was
+  retired in favour of the application-level test.
 
 **F3 · Find the tasks that are due** — spec §6.2
-`ITaskRepository.GetDueRemindersAsync(asOfUtc, limit, ct)`, plus the `idx_tasks_due_pending`
-partial index the query needs. No lower bound on `due_at` — that absence is what makes restart
+`ITaskRepository.GetDueRemindersAsync(asOfUtc, limit, ct)` — re-added to the interface, which F2
+removed as unconsumed — plus the `idx_tasks_due_pending` partial index the query needs. No lower bound on `due_at` — that absence is what makes restart
 catch-up automatic.
 *Tests:* eligible vs ineligible by equivalence class, with boundaries on `due_at <= now`;
 ordering oldest-first; the limit.
