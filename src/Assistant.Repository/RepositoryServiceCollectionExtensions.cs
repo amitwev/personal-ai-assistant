@@ -1,3 +1,5 @@
+using Assistant.Interfaces;
+using Assistant.Repository.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,7 +15,7 @@ namespace Assistant.Repository;
 public static class RepositoryServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the database context against the given connection string.
+    /// Registers the database context and the repositories against the given connection string.
     /// </summary>
     /// <param name="services">The container to add registrations to.</param>
     /// <param name="connectionString">A Npgsql connection string for the assistant database.</param>
@@ -22,6 +24,7 @@ public static class RepositoryServiceCollectionExtensions
         this IServiceCollection services, string connectionString)
     {
         services.AddDbContext<AssistantDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddScoped<ITaskRepository, EfTaskRepository>();
         return services;
     }
 

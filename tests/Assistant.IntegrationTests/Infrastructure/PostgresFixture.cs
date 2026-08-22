@@ -60,6 +60,21 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Builds a service provider wired to the test database.
+    /// </summary>
+    /// <returns>
+    /// A provider the caller owns and must dispose. Each call produces an independent
+    /// <c>DbContext</c>, which is what lets a test read a row back without the change tracker
+    /// answering from memory.
+    /// </returns>
+    public ServiceProvider CreateProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddAssistantRepository(ConnectionString);
+        return services.BuildServiceProvider();
+    }
+
+    /// <summary>
     /// No resources to release; the shared connection is opened per operation.
     /// </summary>
     /// <returns>A completed task.</returns>

@@ -20,15 +20,14 @@ public interface ITaskRepository
     Task AddAsync(ReminderTask task, CancellationToken ct);
 
     /// <summary>
-    /// Returns pending tasks that are due and whose reminder has not yet been delivered.
+    /// Returns the task with the given identifier.
     /// </summary>
-    /// <param name="asOfUtc">The instant to treat as "now".</param>
-    /// <param name="limit">Maximum number of tasks to return.</param>
+    /// <param name="id">The identifier to look for.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>
-    /// Tasks ordered by due time, oldest first. There is no lower bound on the due time, so a
-    /// task missed during an outage is still returned once the process is running again.
+    /// The task, or <see langword="null"/> when no row carries that identifier. The result is
+    /// not change-tracked: mutations go through the task service, never by writing to this
+    /// object and expecting it to be saved.
     /// </returns>
-    Task<IReadOnlyList<ReminderTask>> GetDueRemindersAsync(
-        DateTimeOffset asOfUtc, int limit, CancellationToken ct);
+    Task<ReminderTask?> FindAsync(Guid id, CancellationToken ct);
 }
