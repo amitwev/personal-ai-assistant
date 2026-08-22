@@ -69,8 +69,12 @@ here — the point is to write data the mapping would never produce. That migrat
 is proven by the fixture itself, which calls `MigrateAssistantDatabaseAsync()` during collection
 setup: if it fails, every integration test fails in setup. A test asserting the column list was
 written and then removed — it hardcoded the column names, so it failed when a column was added
-and migrated correctly, and passed when a property was added with no migration at all. The
-defect it was meant to catch is caught by F2's round-trip.
+and migrated correctly, which makes it a change-detector.
+**Correction, measured at F2:** the removal note originally claimed that test would *pass* when a
+property was added with no migration. It would not. EF Core raises
+`PendingModelChangesWarning` on model drift and that warning throws by default, so
+`MigrateAsync()` fails and every integration test fails in setup. The framework already refuses
+the case, which makes the removed test redundant twice over rather than once.
 
 **F2 · Save a task and read it back** — spec §4.1, §4.4
 `ITaskRepository.AddAsync` and `FindAsync`, plus `EfTaskRepository`.

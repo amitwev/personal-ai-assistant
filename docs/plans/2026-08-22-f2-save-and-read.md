@@ -423,9 +423,15 @@ docker compose -f compose.test.yaml up -d
 dotnet test tests/Assistant.IntegrationTests
 ```
 
-Expected: compilation fails — `ITaskRepository` has no registration, so
-`GetRequiredService<ITaskRepository>` throws at runtime, and `FindAsync` does not yet exist on
-any implementation. This is the red state.
+Expected: the project **compiles** — Step 1 already declared `FindAsync`, so nothing is missing
+at compile time. The red state is a runtime failure in the test constructor:
+
+```
+System.InvalidOperationException : No service for type 'Assistant.Interfaces.ITaskRepository'
+has been registered.
+```
+
+3 failed, 2 passed (F1's schema tests).
 
 - [ ] **Step 5: Write `EfTaskRepository`**
 
