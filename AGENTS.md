@@ -59,8 +59,9 @@ right and your change is the thing that is wrong.
 ## Conventions
 
 See `docs/conventions.md`. In short: XML docs on every public member
-(missing ones fail the build), mapping is extension methods named by
-destination, HTTP clients are Refit interfaces.
+(missing ones fail the build), every class with arguments uses a primary
+constructor, mapping is extension methods named by destination, HTTP
+clients are Refit interfaces.
 
 ## Do not
 
@@ -72,6 +73,7 @@ destination, HTTP clients are Refit interfaces.
 - Write a unit test for behaviour an integration test already covers.
 - Use `HttpClient` directly. Write a Refit interface.
 - Name a type `Task` or an enum `TaskStatus`.
+- Declare a separate constructor. Use a primary constructor.
 - Mark a reminder sent before it has actually been sent.
 
 ## Design
