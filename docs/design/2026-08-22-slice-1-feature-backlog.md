@@ -101,12 +101,23 @@ model. Different defects: a mapper that forgets a field, versus a column mapping
   database failed both the raw-SQL test and the new `AddAsync` one, so the raw-SQL test was
   retired in favour of the application-level test.
 
-**F3 · Find the tasks that are due** — spec §6.2
+**F3 · Find the tasks that are due** — spec §6.2 · **done**
 `ITaskRepository.GetDueRemindersAsync(asOfUtc, limit, ct)` — re-added to the interface, which F2
 removed as unconsumed — plus the `idx_tasks_due_pending` partial index the query needs. No lower bound on `due_at` — that absence is what makes restart
 catch-up automatic.
 *Tests:* eligible vs ineligible by equivalence class, with boundaries on `due_at <= now`;
 ordering oldest-first; the limit.
+*Settled at F3:*
+- **Spec §6.2's `status = 0` was a renumbering leftover.** `Unknown` is 0 and
+  `ck_reminder_tasks_status_known` forbids it from ever being persisted, so the query as
+  originally written would have returned nothing, always. Corrected to `status = 1` — `Pending` —
+  matching §4.3's index predicate, which the renumbering had already updated correctly.
+- **Ordering is asserted with `Assert.Equal` on a sequence of ids, never `Assert.Equivalent`.**
+  `Assert.Equivalent` compares collections order-insensitively and would pass on a reversed
+  result; oldest-first delivery is a business requirement, not an incidental detail.
+- **The partial index ships without a test.** It changes no behaviour, only performance, so a
+  test asserting it exists would be a change-detector; whether Postgres uses it is an `EXPLAIN`
+  question this project has no budget or volume to justify yet.
 
 **F4 · Send a Telegram message** — spec §6.5, §12.3
 `INotifier` + `TelegramNotifier` over `Telegram.Bot`, HTML parse mode, WireMock in place of the
