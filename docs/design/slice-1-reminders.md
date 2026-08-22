@@ -78,7 +78,7 @@ This inverts the roadmap in the original spec, where proactive reminders were Ph
 ### 3.1 Projects
 
 ```
-PersonalAssistant.sln
+PersonalAssistant.slnx
 ├─ Directory.Build.props        net10.0, nullable enable, warnings-as-errors
 ├─ Directory.Packages.props     central package version management
 ├─ src/
