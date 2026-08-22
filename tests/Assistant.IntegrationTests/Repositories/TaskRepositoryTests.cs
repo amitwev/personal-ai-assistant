@@ -17,20 +17,13 @@ namespace Assistant.IntegrationTests.Repositories;
 /// another.
 /// </remarks>
 [Collection(PostgresCollection.Name)]
-public sealed class TaskRepositoryTests : IAsyncLifetime
+public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifetime
 {
-    private readonly PostgresFixture _postgres;
-    private readonly ServiceProvider _provider;
-    private readonly ITaskRepository _sut;
+    private readonly ServiceProvider _provider = postgres.CreateProvider();
 
-    public TaskRepositoryTests(PostgresFixture postgres)
-    {
-        _postgres = postgres;
-        _provider = postgres.CreateProvider();
-        _sut = _provider.GetRequiredService<ITaskRepository>();
-    }
+    private ITaskRepository Sut => _provider.GetRequiredService<ITaskRepository>();
 
-    public Task InitializeAsync() => _postgres.ResetAsync();
+    public Task InitializeAsync() => postgres.ResetAsync();
 
     public async Task DisposeAsync() => await _provider.DisposeAsync();
 
@@ -47,7 +40,7 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
         await SaveThroughSeparateContextAsync(expected);
 
         // Act
-        var result = await _sut.FindAsync(expected.Id, CancellationToken.None);
+        var result = await Sut.FindAsync(expected.Id, CancellationToken.None);
 
         // Assert
         Assert.Equivalent(expected, result, strict: true);
@@ -66,7 +59,7 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
         await SaveThroughSeparateContextAsync(reminderTask);
 
         // Act
-        var result = await _sut.FindAsync(reminderTask.Id, CancellationToken.None);
+        var result = await Sut.FindAsync(reminderTask.Id, CancellationToken.None);
 
         // Assert
         Assert.Equal(TimeSpan.Zero, result!.DueAt!.Value.Offset);
@@ -82,7 +75,7 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
     public async Task FindAsync_NoRowWithThatId_ReturnsNull()
     {
         // Act
-        var result = await _sut.FindAsync(Guid.NewGuid(), CancellationToken.None);
+        var result = await Sut.FindAsync(Guid.NewGuid(), CancellationToken.None);
 
         // Assert
         Assert.Null(result);
@@ -101,7 +94,7 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
 
         // Act
         var exception = await Assert.ThrowsAnyAsync<Exception>(
-            () => _sut.AddAsync(reminderTask, CancellationToken.None));
+            () => Sut.AddAsync(reminderTask, CancellationToken.None));
 
         // Assert
         Assert.Equal(
@@ -132,7 +125,7 @@ public sealed class TaskRepositoryTests : IAsyncLifetime
     /// </remarks>
     private async Task SaveThroughSeparateContextAsync(ReminderTask reminderTask)
     {
-        await using var writer = _postgres.CreateProvider();
+        await using var writer = postgres.CreateProvider();
         await writer.GetRequiredService<ITaskRepository>()
             .AddAsync(reminderTask, CancellationToken.None);
     }

@@ -56,7 +56,7 @@ This inverts the roadmap in the original spec, where proactive reminders were Ph
 | Hosting | Cheap VPS (Hetzner/DO), Docker Compose | Proactive push requires genuine 24/7 uptime |
 | Host type | Worker Service (Generic Host), no web server | No inbound HTTP in slice 1 |
 | Telegram transport | Long polling | No public domain, cert, or open port; self-reconnecting |
-| Timezone | `Asia/Jerusalem`, fixed for slice 1 | YAGNI. Configurable zones are a later slice (§12.5) |
+| Timezone | `Asia/Jerusalem`, fixed for slice 1 | YAGNI. Configurable zones are a later slice (§12.6) |
 | HTTP clients | Refit for every HTTP API this project calls itself | Typed interfaces, declarative, WireMock-friendly (§12.3) |
 | Documentation | XML doc comments on every public member, enforced by the build | §12.1 |
 | Mapping | Extension methods only | §12.2 |
@@ -337,7 +337,7 @@ The current local time is injected on every call:
 
 Without this the model has no basis for resolving "tomorrow" and will guess.
 
-**Jerusalem is fixed in slice 1**, in the prompt and in `LocalTimeResolver`. This is a deliberate YAGNI call: making the zone configurable is a small change (§12.5) and there is no second user waiting for it. The README states the limitation plainly rather than implying multi-zone support that does not exist.
+**Jerusalem is fixed in slice 1**, in the prompt and in `LocalTimeResolver`. This is a deliberate YAGNI call: making the zone configurable is a small change (§12.6) and there is no second user waiting for it. The README states the limitation plainly rather than implying multi-zone support that does not exist.
 
 ### 5.3 Tools
 
@@ -798,7 +798,46 @@ It contains, and nothing more than:
 
 **It must stay honest.** A stale `AGENTS.md` actively misleads, whereas a missing one merely slows people down. Every command in it is one CI already runs, so drift shows up as a failing build rather than as a contributor's wasted afternoon.
 
-### 12.5 Deferred conventions
+### 12.5 Primary constructors
+
+**Every class that takes constructor arguments declares them as a primary constructor.** No class
+declares a separate constructor.
+
+```csharp
+internal sealed class EfTaskRepository(AssistantDbContext db) : ITaskRepository
+{
+    public async Task AddAsync(ReminderTask task, CancellationToken ct)
+    {
+        db.ReminderTasks.Add(task);
+        await db.SaveChangesAsync(ct);
+    }
+}
+```
+
+The parameter is in scope for every member, so the assign-to-a-readonly-field ceremony disappears
+along with the field itself. Base calls come along too:
+`internal sealed class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : DbContext(options)`.
+
+Two consequences worth knowing before you hit them:
+
+- **Parameters are documented on the class.** A primary constructor has no doc comment of its own,
+  so its `<param name="...">` tags belong on the class-level block next to `<summary>`. Omitting
+  one is `CS1573`, which is an error in `src/`.
+- **A field initializer cannot reference another field.** Where one dependency is derived from
+  another, the derived one becomes an expression-bodied property rather than a field:
+
+  ```csharp
+  private readonly ServiceProvider _provider = postgres.CreateProvider();
+
+  private ITaskRepository Sut => _provider.GetRequiredService<ITaskRepository>();
+  ```
+
+**This rule is not build-enforced, and that is deliberate.** The compiler emits an ordinary
+constructor either way, so no reflection test can tell the two apart. The analyzer that can
+(`IDE0290`) needs `.editorconfig`, which this project does not use (§12.6). It is a review rule,
+checked by reading.
+
+### 12.6 Deferred conventions
 
 | Item | Trigger |
 | :--- | :--- |

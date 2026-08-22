@@ -23,13 +23,9 @@ namespace Assistant.IntegrationTests.Schema;
 /// </para>
 /// </remarks>
 [Collection(PostgresCollection.Name)]
-public sealed class ReminderTaskSchemaTests : IAsyncLifetime
+public sealed class ReminderTaskSchemaTests(PostgresFixture postgres) : IAsyncLifetime
 {
-    private readonly PostgresFixture _postgres;
-
-    public ReminderTaskSchemaTests(PostgresFixture postgres) => _postgres = postgres;
-
-    public Task InitializeAsync() => _postgres.ResetAsync();
+    public Task InitializeAsync() => postgres.ResetAsync();
 
     public Task DisposeAsync() => Task.CompletedTask;
 
@@ -49,7 +45,7 @@ public sealed class ReminderTaskSchemaTests : IAsyncLifetime
     public async Task Insert_ReminderSentWithoutDueTime_ViolatesSentRequiresDueConstraint()
     {
         // Arrange
-        await using var connection = new NpgsqlConnection(_postgres.ConnectionString);
+        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
