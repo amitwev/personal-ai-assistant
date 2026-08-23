@@ -34,26 +34,43 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     public async Task DisposeAsync() => await _provider.DisposeAsync();
 
     /// <summary>
-    /// When a pending task's due time sits either side of the current instant
+    /// When a pending task is due at or before the current instant
     /// And due reminders are requested as of that instant
-    /// Then it is returned only when its due time has arrived.
+    /// Then it is returned in full.
     /// </summary>
     [Theory]
-    [InlineData(-TicksPerMicrosecond, 1)]
-    [InlineData(0, 1)]
-    [InlineData(TicksPerMicrosecond, 0)]
-    public async Task GetDueRemindersAsync_DueAtAroundNow_ReturnsOnlyWhatIsDue(
-        int ticksFromAsOf, int expectedCount)
+    [InlineData(-TicksPerMicrosecond)]
+    [InlineData(0)]
+    public async Task GetDueRemindersAsync_DueAtAtOrBeforeNow_ReturnsTask(int ticksFromAsOf)
     {
         // Arrange
-        var reminderTask = BuildReminderTask(dueAt: AsOf.AddTicks(ticksFromAsOf));
+        var expected = BuildReminderTask(dueAt: AsOf.AddTicks(ticksFromAsOf));
+        await SaveAsync(expected);
+
+        // Act
+        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+
+        // Assert
+        Assert.Equivalent(new[] { expected }, result, strict: true);
+    }
+
+    /// <summary>
+    /// When a pending task is not due until after the current instant
+    /// And due reminders are requested as of that instant
+    /// Then it is not returned.
+    /// </summary>
+    [Fact]
+    public async Task GetDueRemindersAsync_DueAfterNow_ReturnsNothing()
+    {
+        // Arrange
+        var reminderTask = BuildReminderTask(dueAt: AsOf.AddTicks(TicksPerMicrosecond));
         await SaveAsync(reminderTask);
 
         // Act
         var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
-        Assert.Equal(expectedCount, result.Count);
+        Assert.Empty(result);
     }
 
     /// <summary>
@@ -132,13 +149,15 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         await SaveAsync(newest);
         await SaveAsync(oldest);
 
-        var expected = new[] { oldest.Id, middle.Id, newest.Id };
+        var expected = new[] { oldest, middle, newest };
 
         // Act
         var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
-        Assert.Equal(expected, result.Select(task => task.Id));
+        // Equivalent proves content and cardinality; it is blind to order, so Equal pins the sequence.
+        Assert.Equivalent(expected, result, strict: true);
+        Assert.Equal(expected.Select(task => task.Id), result.Select(task => task.Id));
     }
 
     /// <summary>
@@ -158,13 +177,15 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         await SaveAsync(oldest);
         await SaveAsync(middle);
 
-        var expected = new[] { oldest.Id, middle.Id };
+        var expected = new[] { oldest, middle };
 
         // Act
         var result = await Sut.GetDueRemindersAsync(AsOf, 2, CancellationToken.None);
 
         // Assert
-        Assert.Equal(expected, result.Select(task => task.Id));
+        // Equivalent proves content and cardinality; it is blind to order, so Equal pins the sequence.
+        Assert.Equivalent(expected, result, strict: true);
+        Assert.Equal(expected.Select(task => task.Id), result.Select(task => task.Id));
     }
 
     private static ReminderTask BuildReminderTask(
