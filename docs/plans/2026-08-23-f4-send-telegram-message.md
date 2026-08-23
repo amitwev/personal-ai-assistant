@@ -287,8 +287,13 @@ In `Directory.Packages.props`, in alphabetical position:
 </Project>
 ```
 
-This project is **not** a test project — it has no xUnit reference and `dotnet test` must not
-discover it. It lives under `tests/` because it exists only to serve tests.
+This project is **not** a test project — it has no xUnit reference. Nothing discovers it either,
+because `AGENTS.md` runs `dotnet test` against a named project directory rather than the solution.
+
+The redundant-looking properties match the other projects under `tests/`, which repeat them even
+though `Directory.Build.props` supplies them. Follow the surrounding style rather than trimming.
+Note also that `tests/Directory.Build.props` puts `CS1591` in `NoWarn`, so the doc comments below
+are not build-enforced here — write them anyway; the reasoning they carry is the point.
 
 `tests/Assistant.WireMock/TelegramStubs.cs`:
 
@@ -386,8 +391,10 @@ The runtime image is **aspnet**, not **runtime**. WireMock.Net declares a framew
 `Microsoft.AspNetCore.App` — verified by reading the built `runtimeconfig.json` — so the plain
 runtime image starts and then dies with a missing-framework error.
 
-If `Directory.Build.props` does not exist at the repository root, drop that line from the `COPY`
-rather than creating one.
+`Directory.Build.props` and `Directory.Packages.props` are both copied before `restore` because
+central package management resolves versions from them — verified present at the repository root.
+Without them the restore fails with NU1008 inside the image, which is a confusing place to
+discover it.
 
 - [ ] **Step 4: Add the service to compose**
 
