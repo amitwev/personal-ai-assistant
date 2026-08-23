@@ -1,0 +1,36 @@
+using Assistant.Impl.Settings;
+using Assistant.Impl.Telegram;
+using Assistant.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Telegram.Bot;
+
+namespace Assistant.Impl;
+
+/// <summary>
+/// Registers the assistant's outbound channels.
+/// </summary>
+public static class ImplServiceCollectionExtensions
+{
+    /// <summary>
+    /// Registers Telegram as the assistant's notifier.
+    /// </summary>
+    /// <param name="services">The container to add registrations to.</param>
+    /// <param name="settings">
+    /// Validated Telegram configuration. Read it with <c>IConfiguration.Read</c> so a missing
+    /// value stops the host here, while it is composing, rather than at first delivery.
+    /// </param>
+    /// <returns>The same <paramref name="services"/>, for chaining.</returns>
+    public static IServiceCollection AddAssistantTelegram(
+        this IServiceCollection services, TelegramSettings settings)
+    {
+        services.AddSingleton(settings);
+        services.AddSingleton<ITelegramBotClient>(
+            _ => new TelegramBotClient(
+                new TelegramBotClientOptions(settings.BotToken, settings.BaseUrl)));
+        services.AddSingleton<INotifier>(
+            provider => new TelegramNotifier(
+                provider.GetRequiredService<ITelegramBotClient>(),
+                provider.GetRequiredService<TelegramSettings>()));
+        return services;
+    }
+}
