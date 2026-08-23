@@ -27,14 +27,15 @@ querying WireMock's admin API over HTTP, the same way they reset Postgres with R
 - Every `<summary>` is three lines. Primary constructor parameters are documented on the class.
 - Central package management: versions go in `Directory.Packages.props`, never inline (NU1008).
 - **YAGNI:** this feature introduces nothing it does not test.
-- PR budget: 1000 lines. Estimated ~300 of code, tests, and container plumbing, plus this plan.
+- PR budget: 1000 lines. Estimated ~430 of code, tests, settings, and container plumbing,
+  plus this plan.
 
 ---
 
 ## This supersedes spec §7.1
 
 §7.1 currently reads: *"WireMock runs in-process (1–5ms per call), so once Postgres is up a test
-lands around 20–60ms."* That is no longer true, and Task 3 Step 1 updates it.
+lands around 20–60ms."* That is no longer true, and Task 4 Step 1 updates it.
 
 The change was requested in review: WireMock becomes its own project and its own container rather
 than a library the test process starts. What that buys, and what it costs, are both real and are
@@ -100,6 +101,36 @@ Admin calls are not themselves recorded in the request log, so reading does not 
 So the container base image is `mcr.microsoft.com/dotnet/aspnet:10.0-alpine`, not
 `dotnet/runtime`. Getting that wrong produces a container that builds and then fails at startup.
 
+**`required` does not protect a settings class, and this is the whole reason `Validate()` exists.**
+Binding a section that is missing values to a class whose properties are `required`:
+
+```
+PROBE section.Exists() (only unrelated key) = True
+PROBE bound with missing required          = token='<null>' chat=0
+PROBE absent section Exists()              = False
+PROBE absent section Get<T>()              = NULL
+PROBE populated                            = token='123:ABC' chat=472619570
+```
+
+Three things follow, and each one is load-bearing:
+
+- `required` is a compile-time contract for object initialisers. The configuration binder goes
+  around it, so a missing token becomes `null` in a `string` property that the nullable analysis
+  swears is not null. Nothing throws. The failure surfaces later as a confusing 401 from Telegram.
+- `section.Exists()` is true when *any* key sits under the section, so an unrelated or misspelled
+  key makes an otherwise-empty section look present.
+- A section that is entirely absent binds to `null`, which is why the null check in `Read<T>` is
+  not defensive padding.
+
+**`ConfigurationErrorsException` needs a package.** It does not resolve from the shared framework:
+
+```
+PROBE ConfigurationErrorsException resolvable = False
+```
+
+`Trading.Ibkr.Common.csproj` references `System.Configuration.ConfigurationManager` for exactly
+this reason, so this project does the same rather than substituting a different exception type.
+
 ---
 
 ## Decisions this plan makes — review these first
@@ -164,6 +195,31 @@ force a reviewer to look — but it is a cost.
 
 Spec §7.5 lists it. There is no `Impl/Services` namespace yet, so it would pass over zero types.
 
+### H. Settings are a bound, validated model — checked at startup, not at first use
+
+Requested in review, modelled on `Trading.Ibkr`'s `IValidatableConfig` / `ConfigurationExtensions`
+pattern. This pulls fail-fast validation forward from F14, where the backlog had parked it.
+
+The shape is the same as the reference project:
+
+- `IValidatableConfig` — one method, `void Validate()`.
+- `TelegramSettings : IValidatableConfig` — `required` init properties plus a `Validate()` that
+  throws per missing field.
+- `IConfiguration.Read<T>()` — section name is `typeof(T).Name`, checks `Exists()`, binds,
+  null-checks, calls `Validate()`, returns.
+- `Program.cs` calls `Read<TelegramSettings>()` while composing the container, so a missing token
+  stops the host before it starts rather than surfacing as a 401 on the first reminder.
+
+**Where the types live is constrained by tests this repo already has.** `TelegramSettings` cannot
+live in `Assistant.Models`: `ConventionTests.Models_declare_no_methods_beyond_property_accessors`
+would fail on `Validate()`. It cannot live in `Assistant.Interfaces` either, which
+`Interfaces_declares_no_concrete_public_classes` reserves for abstractions. So `IValidatableConfig`
+goes to `Interfaces` (spec §3.1: every interface in the system) and the settings class and the
+binder extension go to `Impl`, next to the adapter that consumes them.
+
+**`baseUrl` becomes a settings property** rather than a parameter, which is what lets a test point
+the client at the stub container without a production seam.
+
 ---
 
 ## What F4 does NOT include, and why
@@ -192,17 +248,23 @@ Spec §7.5 lists it. There is no `Impl/Services` namespace yet, so it would pass
 | `tests/Assistant.WireMock/Dockerfile` | **Create.** SDK build → aspnet:10.0-alpine runtime. |
 | `compose.test.yaml` | **Modify.** Add the `wiremock` service. |
 | `src/Assistant.Interfaces/INotifier.cs` | **Create.** One method. |
+| `src/Assistant.Interfaces/IValidatableConfig.cs` | **Create.** `void Validate()`. |
+| `src/Assistant.Impl/Settings/TelegramSettings.cs` | **Create.** Bound settings + validation. |
+| `src/Assistant.Impl/Configuration/ConfigurationExtensions.cs` | **Create.** `Read<T>()`. |
+| `src/Assistant.Worker/Program.cs` | **Modify.** Read and validate settings while composing. |
+| `tests/Assistant.UnitTests/Configuration/ConfigurationExtensionsTests.cs` | **Create.** Four cases. |
 | `src/Assistant.Impl/Assistant.Impl.csproj` | **Modify.** Telegram.Bot + DI abstractions. |
 | `src/Assistant.Impl/Telegram/TelegramNotifier.cs` | **Create.** The only type naming an SDK type. |
 | `src/Assistant.Impl/ImplServiceCollectionExtensions.cs` | **Create.** `AddAssistantTelegram`. |
 | `tests/Assistant.IntegrationTests/Infrastructure/WireMockFixture.cs` | **Create.** Readiness, reset, request reads. |
 | `tests/Assistant.IntegrationTests/Infrastructure/WireMockCollection.cs` | **Create.** Collection definition. |
 | `tests/Assistant.IntegrationTests/Telegram/TelegramNotifierTests.cs` | **Create.** One test, two cases. |
-| `AGENTS.md`, `docs/design/slice-1-reminders.md` | **Modify.** Task 3 — correct §7.1, document the second container. |
+| `AGENTS.md`, `docs/design/slice-1-reminders.md` | **Modify.** Task 4 — correct §7.1, document the second container. |
 
 **Interfaces produced:**
 - `INotifier.SendAsync(string text, CancellationToken ct)` → `Task`
-- `AddAssistantTelegram(IServiceCollection, string botToken, long ownerChatId, string? baseUrl = null)`
+- `AddAssistantTelegram(IServiceCollection, TelegramSettings settings)`
+- `IValidatableConfig.Validate()`; `TelegramSettings`; `IConfiguration.Read<T>()`
 - `WireMockFixture` with `string Url`, `Task ResetAsync()`, `Task<IReadOnlyList<SendMessagePayload>> SentMessagesAsync()`
 - `WireMockCollection.Name` (`"wiremock"`)
 
@@ -261,9 +323,16 @@ required, because without it an extra member in the actual payload goes undetect
 In `Directory.Packages.props`, in alphabetical position:
 
 ```xml
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.4" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.4" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.11" />
     <PackageVersion Include="Telegram.Bot" Version="22.10.2.1" />
     <PackageVersion Include="WireMock.Net" Version="2.15.0" />
 ```
+
+`System.Configuration.ConfigurationManager` is there only for `ConfigurationErrorsException`,
+which does not resolve from the shared framework — measured above. `Trading.Ibkr.Common` carries
+the same reference for the same reason.
 
 - [ ] **Step 2: Create the project**
 
@@ -449,7 +518,313 @@ git commit -m "test: add a WireMock stub service that runs in compose"
 
 ---
 
-## Task 2: `INotifier`, `TelegramNotifier`, and the fixture
+## Task 2: Settings, validated at startup
+
+**Files:**
+- Create: `src/Assistant.Interfaces/IValidatableConfig.cs`
+- Create: `src/Assistant.Impl/Settings/TelegramSettings.cs`
+- Create: `src/Assistant.Impl/Configuration/ConfigurationExtensions.cs`
+- Modify: `src/Assistant.Worker/Program.cs`
+- Test: `tests/Assistant.UnitTests/Configuration/ConfigurationExtensionsTests.cs`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `IValidatableConfig`, `TelegramSettings`, `IConfiguration.Read<T>()`.
+
+- [ ] **Step 1: The contract**
+
+`src/Assistant.Interfaces/IValidatableConfig.cs`:
+
+```csharp
+namespace Assistant.Interfaces;
+
+/// <summary>
+/// Settings that must be checked while the application is starting.
+/// </summary>
+/// <remarks>
+/// The configuration binder does not honour <c>required</c> — a missing value binds to null or
+/// zero without complaint — so a settings type states its own rules and the host runs them before
+/// anything can use a half-populated instance.
+/// </remarks>
+public interface IValidatableConfig
+{
+    /// <summary>
+    /// Throws when a mandatory value is missing.
+    /// </summary>
+    void Validate();
+}
+```
+
+- [ ] **Step 2: The settings**
+
+`src/Assistant.Impl/Settings/TelegramSettings.cs`:
+
+```csharp
+using System.Configuration;
+using Assistant.Interfaces;
+
+namespace Assistant.Impl.Settings;
+
+/// <summary>
+/// Configuration for the Telegram notifier.
+/// </summary>
+public sealed class TelegramSettings : IValidatableConfig
+{
+    /// <summary>
+    /// The bot token issued by BotFather.
+    /// </summary>
+    public required string BotToken { get; init; }
+
+    /// <summary>
+    /// The chat the assistant reports to.
+    /// </summary>
+    public required long OwnerChatId { get; init; }
+
+    /// <summary>
+    /// The API base address, or null for the real Telegram API.
+    /// </summary>
+    /// <value>
+    /// Tests point this at the stub container. It is optional, so it is not validated: absent
+    /// means production.
+    /// </value>
+    public string? BaseUrl { get; init; }
+
+    /// <inheritdoc/>
+    public void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(BotToken))
+        {
+            throw new ConfigurationErrorsException(
+                $"{nameof(TelegramSettings)}.{nameof(BotToken)} is missing or empty.");
+        }
+
+        if (OwnerChatId == 0)
+        {
+            throw new ConfigurationErrorsException(
+                $"{nameof(TelegramSettings)}.{nameof(OwnerChatId)} is missing or zero.");
+        }
+    }
+}
+```
+
+`OwnerChatId` is checked against `0` rather than for null, because it is a `long`: an absent key
+binds to the default, not to null. Measured — see the probe output above.
+
+- [ ] **Step 3: The binder extension**
+
+Add `Microsoft.Extensions.Configuration.Abstractions`, `Microsoft.Extensions.Configuration.Binder`
+and `System.Configuration.ConfigurationManager` as `PackageReference` entries (no inline versions)
+to `src/Assistant.Impl/Assistant.Impl.csproj`.
+
+`src/Assistant.Impl/Configuration/ConfigurationExtensions.cs`:
+
+```csharp
+using System.Configuration;
+using Assistant.Interfaces;
+using Microsoft.Extensions.Configuration;
+
+namespace Assistant.Impl.Configuration;
+
+/// <summary>
+/// Reads configuration sections into validated settings objects.
+/// </summary>
+public static class ConfigurationExtensions
+{
+    /// <summary>
+    /// Binds the section named after <typeparamref name="T"/> and validates it.
+    /// </summary>
+    /// <typeparam name="T">The settings type, which names its own section.</typeparam>
+    /// <param name="configuration">The application configuration.</param>
+    /// <returns>A populated, validated instance.</returns>
+    /// <exception cref="ConfigurationErrorsException">
+    /// The section is absent, could not be bound, or a mandatory value is missing.
+    /// </exception>
+    /// <remarks>
+    /// Each of the three checks catches a different failure. An absent section binds to null.
+    /// A section holding only an unrelated key still reports <c>Exists()</c> as true, so binding
+    /// succeeds and leaves the real values empty. And <c>required</c> is a compile-time contract
+    /// the binder goes around, so only <see cref="IValidatableConfig.Validate"/> catches a value
+    /// that is present in shape but missing in fact.
+    /// </remarks>
+    public static T Read<T>(this IConfiguration configuration)
+        where T : IValidatableConfig
+    {
+        var sectionName = typeof(T).Name;
+        var section = configuration.GetSection(sectionName);
+
+        if (!section.Exists())
+        {
+            throw new ConfigurationErrorsException(
+                $"Configuration section '{sectionName}' was not found.");
+        }
+
+        var settings = section.Get<T>()
+            ?? throw new ConfigurationErrorsException(
+                $"Configuration section '{sectionName}' could not be bound to {typeof(T).Name}.");
+
+        settings.Validate();
+        return settings;
+    }
+}
+```
+
+- [ ] **Step 4: Write the failing tests**
+
+`tests/Assistant.UnitTests/Configuration/ConfigurationExtensionsTests.cs`:
+
+```csharp
+using System.Configuration;
+using Assistant.Impl.Configuration;
+using Assistant.Impl.Settings;
+using Microsoft.Extensions.Configuration;
+
+namespace Assistant.UnitTests.Configuration;
+
+/// <summary>
+/// Test class for <see cref="ConfigurationExtensions.Read{T}"/>.
+/// </summary>
+public sealed class ConfigurationExtensionsTests
+{
+    private const string BotToken = "123456:TESTTOKEN";
+    private const string OwnerChatId = "472619570";
+
+    /// <summary>
+    /// When the settings section is absent altogether
+    /// And configuration is read
+    /// Then startup fails rather than continuing with defaults.
+    /// </summary>
+    [Fact]
+    public void Read_SectionMissing_Throws()
+    {
+        // Arrange
+        var configuration = BuildConfiguration([]);
+
+        // Act
+        var exception = Record.Exception(() => configuration.Read<TelegramSettings>());
+
+        // Assert
+        Assert.IsType<ConfigurationErrorsException>(exception);
+    }
+
+    /// <summary>
+    /// When a mandatory value is absent from an otherwise present section
+    /// And configuration is read
+    /// Then startup fails rather than binding it to null or zero.
+    /// </summary>
+    [Theory]
+    [InlineData("TelegramSettings:OwnerChatId", OwnerChatId)]
+    [InlineData("TelegramSettings:BotToken", BotToken)]
+    public void Read_MandatoryValueMissing_Throws(string presentKey, string presentValue)
+    {
+        // Arrange
+        var configuration = BuildConfiguration(new Dictionary<string, string?>
+        {
+            [presentKey] = presentValue,
+        });
+
+        // Act
+        var exception = Record.Exception(() => configuration.Read<TelegramSettings>());
+
+        // Assert
+        Assert.IsType<ConfigurationErrorsException>(exception);
+    }
+
+    /// <summary>
+    /// When every mandatory value is present
+    /// And configuration is read
+    /// Then the settings are returned exactly as configured.
+    /// </summary>
+    [Fact]
+    public void Read_EveryMandatoryValuePresent_ReturnsSettings()
+    {
+        // Arrange
+        var expected = new TelegramSettings
+        {
+            BotToken = BotToken,
+            OwnerChatId = 472619570L,
+            BaseUrl = "http://localhost:58080",
+        };
+        var configuration = BuildConfiguration(new Dictionary<string, string?>
+        {
+            ["TelegramSettings:BotToken"] = BotToken,
+            ["TelegramSettings:OwnerChatId"] = OwnerChatId,
+            ["TelegramSettings:BaseUrl"] = "http://localhost:58080",
+        });
+
+        // Act
+        var result = configuration.Read<TelegramSettings>();
+
+        // Assert
+        Assert.Equivalent(expected, result, strict: true);
+    }
+
+    private static IConfiguration BuildConfiguration(Dictionary<string, string?> values) =>
+        new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+}
+```
+
+Each `[InlineData]` supplies the key that *is* present, so the other mandatory value is the one
+missing. That covers both fields without a conditional in the test body.
+
+`Assistant.UnitTests` already references `Assistant.Impl`. Add the two configuration packages to
+its `csproj` if `IConfiguration` does not resolve.
+
+- [ ] **Step 5: Run and watch them fail, then pass**
+
+```bash
+dotnet test tests/Assistant.UnitTests
+```
+
+Red first — `Read` does not exist. After Steps 1 to 3, expect **16** unit tests: the 12 existing
+plus the 4 cases here.
+
+- [ ] **Step 6: Wire it into startup**
+
+`src/Assistant.Worker/Program.cs`:
+
+```csharp
+using Assistant.Impl;
+using Assistant.Impl.Configuration;
+using Assistant.Impl.Settings;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddAssistantTelegram(builder.Configuration.Read<TelegramSettings>());
+
+var host = builder.Build();
+host.Run();
+```
+
+Add a project reference from `Assistant.Worker` to `Assistant.Impl` if one is not already there.
+
+This is the point of the task: a missing token now stops the host during composition, before
+`Run()`, instead of surfacing as a 401 the first time a reminder fires.
+
+- [ ] **Step 7: Confirm `dotnet ef` still works**
+
+This step exists because the risk is real, not hypothetical. `Program.cs` previously registered
+nothing; it now throws without configuration. EF's tooling resolves
+`AssistantDbContextFactory` first, so migrations should be unaffected — but EF also probes the
+startup project's host builder, and that probe running `Main` would now throw.
+
+```bash
+dotnet ef migrations list --project src/Assistant.Repository --startup-project src/Assistant.Worker
+```
+
+Expected: the two migrations are listed. **If this fails**, do not work around it by weakening the
+validation — report it. The fix would be to give the Worker an `appsettings.Development.json` with
+placeholder values, which is a decision worth making deliberately rather than by accident.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/ tests/
+git commit -m "feat: validate Telegram settings while the host is composing"
+```
+
+---
+
+## Task 3: `INotifier`, `TelegramNotifier`, and the fixture
 
 **Files:** `src/Assistant.Interfaces/INotifier.cs`, `src/Assistant.Impl/**`,
 `tests/Assistant.IntegrationTests/**`.
@@ -639,6 +1014,7 @@ public sealed class WireMockCollection : ICollectionFixture<WireMockFixture>
 
 ```csharp
 using Assistant.Impl;
+using Assistant.Impl.Settings;
 using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -660,7 +1036,12 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
     public Task InitializeAsync()
     {
         var services = new ServiceCollection();
-        services.AddAssistantTelegram(BotToken, OwnerChatId, wireMock.Url);
+        services.AddAssistantTelegram(new TelegramSettings
+        {
+            BotToken = BotToken,
+            OwnerChatId = OwnerChatId,
+            BaseUrl = wireMock.Url,
+        });
         _provider = services.BuildServiceProvider();
         return wireMock.ResetAsync();
     }
@@ -708,6 +1089,7 @@ exists. That is the red state.
 `src/Assistant.Impl/Telegram/TelegramNotifier.cs`:
 
 ```csharp
+using Assistant.Impl.Settings;
 using Assistant.Interfaces;
 using Telegram.Bot;
 using Telegram.Bot.Types.Enums;
@@ -718,17 +1100,17 @@ namespace Assistant.Impl.Telegram;
 /// Delivers messages through the Telegram Bot API.
 /// </summary>
 /// <param name="bot">The Telegram client, already pointed at a base address.</param>
-/// <param name="ownerChatId">The chat this assistant reports to.</param>
+/// <param name="settings">Validated Telegram configuration.</param>
 /// <remarks>
 /// HTML parse mode is deliberate. MarkdownV2 has eighteen escape-sensitive characters, so an
 /// underscore in a task title would produce a 400 on a live reminder — a formatting defect that
 /// costs a delivery. HTML has three, and none occur in ordinary task text.
 /// </remarks>
-internal sealed class TelegramNotifier(ITelegramBotClient bot, long ownerChatId) : INotifier
+internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings settings) : INotifier
 {
     /// <inheritdoc/>
     public async Task SendAsync(string text, CancellationToken ct) =>
-        await bot.SendMessage(ownerChatId, text, ParseMode.Html, cancellationToken: ct);
+        await bot.SendMessage(settings.OwnerChatId, text, ParseMode.Html, cancellationToken: ct);
 }
 ```
 
@@ -740,6 +1122,7 @@ will not compile.
 `src/Assistant.Impl/ImplServiceCollectionExtensions.cs`:
 
 ```csharp
+using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -756,21 +1139,22 @@ public static class ImplServiceCollectionExtensions
     /// Registers Telegram as the assistant's notifier.
     /// </summary>
     /// <param name="services">The container to add registrations to.</param>
-    /// <param name="botToken">The bot token issued by BotFather.</param>
-    /// <param name="ownerChatId">The chat the assistant reports to.</param>
-    /// <param name="baseUrl">
-    /// The API base address, or <see langword="null"/> for the real Telegram API. Tests pass the
-    /// stub's address here, which is why no seam is needed in the notifier itself.
+    /// <param name="settings">
+    /// Validated Telegram configuration. Read it with <c>IConfiguration.Read</c> so a missing
+    /// value stops the host here, while it is composing, rather than at first delivery.
     /// </param>
     /// <returns>The same <paramref name="services"/>, for chaining.</returns>
     public static IServiceCollection AddAssistantTelegram(
-        this IServiceCollection services, string botToken, long ownerChatId, string? baseUrl = null)
+        this IServiceCollection services, TelegramSettings settings)
     {
+        services.AddSingleton(settings);
         services.AddSingleton<ITelegramBotClient>(
-            _ => new TelegramBotClient(new TelegramBotClientOptions(botToken, baseUrl)));
+            _ => new TelegramBotClient(
+                new TelegramBotClientOptions(settings.BotToken, settings.BaseUrl)));
         services.AddSingleton<INotifier>(
             provider => new TelegramNotifier(
-                provider.GetRequiredService<ITelegramBotClient>(), ownerChatId));
+                provider.GetRequiredService<ITelegramBotClient>(),
+                provider.GetRequiredService<TelegramSettings>()));
         return services;
     }
 }
@@ -814,7 +1198,7 @@ git commit -m "feat: send a message through Telegram"
 
 ---
 
-## Task 3: Record what F4 settled, and correct the spec
+## Task 4: Record what F4 settled, and correct the spec
 
 **Files:** `docs/design/slice-1-reminders.md`, `docs/design/2026-08-22-slice-1-feature-backlog.md`,
 `AGENTS.md`.
@@ -835,7 +1219,10 @@ on what it is.
 - [ ] **Step 3: Update the F4 backlog entry**
 
 Mark it done. Record Decision A (the service, and its three costs), Decision D (the collection
-merge owed at F5), and Decision F (the payload assertion, and that F6's keyboard will fail it).
+merge owed at F5), Decision F (the payload assertion, and that F6's keyboard will fail it), and
+Decision H — settings validated during composition, which pulls fail-fast forward from F14. Note
+against F14 that the pattern now exists and it inherits `appsettings.{Environment}.json` and the
+remaining settings types rather than the whole mechanism.
 
 - [ ] **Step 4: Full verification**
 
@@ -848,7 +1235,7 @@ dotnet test tests/Assistant.IntegrationTests
 ```
 
 `down -v` then `up -d --build` proves the whole thing works from nothing, which is what a fresh
-clone or CI will do. Expected: `0 Warning(s)`, `0 Error(s)`, 12 unit tests, 16 integration tests.
+clone or CI will do. Expected: `0 Warning(s)`, `0 Error(s)`, 16 unit tests, 16 integration tests.
 
 - [ ] **Step 5: Commit and push**
 
@@ -882,5 +1269,5 @@ stops one API's traffic being read as another's. It is correct today and it is l
 later, so the filter is not an incidental detail to tidy away.
 
 **Second risk.** Building the container adds a step CI does not yet have — there is no CI until
-F14. Until then `docker compose up -d --build` is a developer responsibility, which Task 3 Step 2
+F14. Until then `docker compose up -d --build` is a developer responsibility, which Task 4 Step 2
 writes into `AGENTS.md` so it is not folklore.
