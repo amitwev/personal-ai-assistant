@@ -32,6 +32,10 @@ docker compose up -d          # Postgres + worker; migrations apply on startup
 docker compose logs -f worker
 ```
 
+The Telegram bot token goes in user secrets, never in `appsettings.Development.json` (this
+repository is public); user secrets only load in `Development`, so commands that need it require
+`DOTNET_ENVIRONMENT=Development dotnet run --project src/Assistant.Worker -- send-test-message`.
+
 ### Database migrations
 
 ```bash

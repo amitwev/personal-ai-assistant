@@ -119,9 +119,31 @@ ordering oldest-first; the limit.
   test asserting it exists would be a change-detector; whether Postgres uses it is an `EXPLAIN`
   question this project has no budget or volume to justify yet.
 
-**F4 · Send a Telegram message** — spec §6.5, §12.3
-`INotifier` + `TelegramNotifier` over `Telegram.Bot`, HTML parse mode, WireMock in place of the
-real API.
+**F4a · Send a Telegram message** — spec §3.1, §3.3, §6.5, §12.3 · **done**
+`INotifier` + `TelegramNotifier` over `Telegram.Bot`, HTML parse mode. Settings are validated
+during host composition — `IValidatableConfig` plus `IConfiguration.Read<T>()` binds the section
+named for the settings type and calls its `Validate()`, so a missing bot token or chat id stops
+the host before it serves anything. This pulls fail-fast forward from F14; see the note against
+F14, below. The recipient (`TelegramSettings.OwnerChatId`) is configuration, not a parameter —
+this is a single-user assistant, so every call site would otherwise pass the same value. A
+`send-test-message` switch on `Assistant.Worker` sends one fixed message and exits, so the feature
+can be verified by hand.
+*Tests:* four, on `ConfigurationExtensions.Read<T>` — the section missing; each of the two
+mandatory values missing in turn; every value present returns the settings unchanged.
+`TelegramNotifier` itself ships with no automated test. Deliberate and temporary: F4b owes it.
+*Settled at F4a:*
+- **F4 split in two.** F4a is the implementation, accepted by a human receiving a real message on
+  a real phone. F4b adds a WireMock stub to Docker Compose and the automated delivery test spec
+  §7.1 calls for — F4a cannot claim that level alone.
+- **HTML parse mode, not MarkdownV2.** MarkdownV2 has eighteen escape-sensitive characters, so an
+  underscore or asterisk in a task title would 400 on a live reminder. HTML has three, and none of
+  them occur in ordinary task text.
+- **The bot token goes in user secrets, never in `appsettings.Development.json`.** `.gitignore`
+  covers `.env`, `*.env`, and `appsettings.*.local.json`, but not `appsettings.Development.json`,
+  and this repository is public.
+
+**F4b · Telegram integration test** — spec §7.1, §11.3
+A WireMock stub for the Telegram API in Docker Compose, and the automated test F4a deferred.
 *Tests:* exact recipient and exact text; a title containing `_` and `*` still delivers.
 
 **F5 · The scheduler fires due reminders ▶ observable** — spec §6.1, §6.2
@@ -197,9 +219,12 @@ told. `ChatMessage` + `chat_messages` arrive here for the conversation window.
 
 **F14 · Operations** — spec §6.5, §8, §11.3
 `/status`, Serilog, the heartbeat file and container healthcheck, `Dockerfile`, `compose.yaml`,
-`.github/workflows/ci.yml` with gitleaks, and the fail-fast options validation
-(`ValidateOnStart`) with `appsettings.{Environment}.json`.
+`.github/workflows/ci.yml` with gitleaks, and `appsettings.{Environment}.json`.
 *Tests:* the host refuses to start on invalid configuration.
+**Reduced by F4a:** the fail-fast mechanism — `IValidatableConfig` and `IConfiguration.Read<T>()`
+— already exists and is already exercised by `TelegramSettings`. F14 inherits only
+`appsettings.{Environment}.json` and validation for the settings types slice 1 still needs, not
+the mechanism itself.
 
 ---
 
@@ -222,8 +247,9 @@ an HTTP API, calendar integration, voice transcription, multi-user. Spec §1.3 a
 
 ## 6. Order and dependencies
 
-F1 → F2 → F3 → F4 → F5 is a chain; nothing in it can be reordered. F6 needs F5. F7 is
-independent of F1-F6 and could move earlier if you want to talk to the bot sooner.
+F1 → F2 → F3 → F4a → F5 is a chain; nothing in it can be reordered. F4b depends only on F4a and
+does not block F5. F6 needs F5. F7 is independent of F1-F6 and could move earlier if you want to
+talk to the bot sooner.
 F8 → F9 → F10 is a chain. F11-F14 each depend only on F10.
 
 Three milestones are worth pausing on: **F5** (a reminder actually fires), **F10** (the whole
