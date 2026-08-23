@@ -34,7 +34,7 @@ querying WireMock's admin API over HTTP, the same way they reset Postgres with R
 ## This supersedes spec §7.1
 
 §7.1 currently reads: *"WireMock runs in-process (1–5ms per call), so once Postgres is up a test
-lands around 20–60ms."* That is no longer true, and Task 4 updates it.
+lands around 20–60ms."* That is no longer true, and Task 3 Step 1 updates it.
 
 The change was requested in review: WireMock becomes its own project and its own container rather
 than a library the test process starts. What that buys, and what it costs, are both real and are
