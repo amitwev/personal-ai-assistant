@@ -389,7 +389,7 @@ Backed by `ITaskRepository.GetDueRemindersAsync(now, limit)`:
 
 ```sql
 SELECT * FROM reminder_tasks
-WHERE status = 0 AND due_at <= @now AND reminder_sent_at IS NULL
+WHERE status = 1 AND due_at <= @now AND reminder_sent_at IS NULL
 ORDER BY due_at
 LIMIT @limit;
 ```

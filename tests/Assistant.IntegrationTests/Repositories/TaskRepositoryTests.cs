@@ -89,8 +89,7 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
     public async Task AddAsync_StatusUnknown_RejectedByStatusConstraint()
     {
         // Arrange
-        var reminderTask = BuildReminderTask();
-        reminderTask.Status = ReminderStatus.Unknown;
+        var reminderTask = BuildReminderTask(status: ReminderStatus.Unknown);
 
         // Act
         var exception = await Assert.ThrowsAnyAsync<Exception>(
@@ -102,11 +101,11 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
             FindPostgresException(exception)!.ConstraintName);
     }
 
-    private static ReminderTask BuildReminderTask() => new()
+    private static ReminderTask BuildReminderTask(ReminderStatus status = ReminderStatus.Pending) => new()
     {
         Id = Guid.NewGuid(),
         Title = "call the bank",
-        Status = ReminderStatus.Pending,
+        Status = status,
         DueAt = new DateTimeOffset(2026, 8, 22, 10, 30, 0, TimeSpan.Zero),
         ReminderSentAt = null,
         CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),

@@ -33,5 +33,9 @@ internal sealed class ReminderTaskConfiguration : IEntityTypeConfiguration<Remin
             .HasColumnType("timestamptz");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz");
+
+        builder.HasIndex(x => x.DueAt)
+            .HasDatabaseName("idx_tasks_due_pending")
+            .HasFilter("status = 1 AND reminder_sent_at IS NULL");
     }
 }
