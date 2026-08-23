@@ -198,7 +198,7 @@ Spec §7.5 lists it. There is no `Impl/Services` namespace yet, so it would pass
 | `tests/Assistant.IntegrationTests/Infrastructure/WireMockFixture.cs` | **Create.** Readiness, reset, request reads. |
 | `tests/Assistant.IntegrationTests/Infrastructure/WireMockCollection.cs` | **Create.** Collection definition. |
 | `tests/Assistant.IntegrationTests/Telegram/TelegramNotifierTests.cs` | **Create.** One test, two cases. |
-| `AGENTS.md`, `docs/design/slice-1-reminders.md` | **Modify.** Task 4. |
+| `AGENTS.md`, `docs/design/slice-1-reminders.md` | **Modify.** Task 3 — correct §7.1, document the second container. |
 
 **Interfaces produced:**
 - `INotifier.SendAsync(string text, CancellationToken ct)` → `Task`
