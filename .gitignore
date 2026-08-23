@@ -14,6 +14,7 @@ artifacts/
 *.env
 !.env.example
 appsettings.*.local.json
+appsettings.Development.json
 
 # Test output
 [Tt]est[Rr]esult*/

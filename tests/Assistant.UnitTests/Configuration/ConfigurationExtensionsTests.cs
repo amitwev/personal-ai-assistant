@@ -28,7 +28,8 @@ public sealed class ConfigurationExtensionsTests
         var exception = Record.Exception(() => configuration.Read<TelegramSettings>());
 
         // Assert
-        Assert.IsType<ConfigurationErrorsException>(exception);
+        var error = Assert.IsType<ConfigurationErrorsException>(exception);
+        Assert.Contains("was not found", error.Message);
     }
 
     /// <summary>

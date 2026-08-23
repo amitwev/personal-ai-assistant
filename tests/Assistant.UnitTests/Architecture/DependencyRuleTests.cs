@@ -14,6 +14,7 @@ public class DependencyRuleTests
     [Theory]
     [InlineData("Microsoft.EntityFrameworkCore")]
     [InlineData("Npgsql")]
+    [InlineData("Telegram.Bot")]
     public void Models_do_not_depend_on_persistence_libraries(string forbidden)
     {
         var result = Types.InAssembly(ModelsAssembly)

@@ -23,14 +23,12 @@ public static class ImplServiceCollectionExtensions
     public static IServiceCollection AddAssistantTelegram(
         this IServiceCollection services, TelegramSettings settings)
     {
+        var client = new TelegramBotClient(
+            new TelegramBotClientOptions(settings.BotToken, settings.BaseUrl));
+
         services.AddSingleton(settings);
-        services.AddSingleton<ITelegramBotClient>(
-            _ => new TelegramBotClient(
-                new TelegramBotClientOptions(settings.BotToken, settings.BaseUrl)));
-        services.AddSingleton<INotifier>(
-            provider => new TelegramNotifier(
-                provider.GetRequiredService<ITelegramBotClient>(),
-                provider.GetRequiredService<TelegramSettings>()));
+        services.AddSingleton<ITelegramBotClient>(client);
+        services.AddSingleton<INotifier, TelegramNotifier>();
         return services;
     }
 }
