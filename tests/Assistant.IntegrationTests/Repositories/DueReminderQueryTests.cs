@@ -23,6 +23,8 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     private static readonly DateTimeOffset AsOf =
         new(2026, 8, 22, 12, 0, 0, TimeSpan.Zero);
 
+    private static readonly DateTimeOffset DueAnHourAgo = AsOf.AddHours(-1);
+
     private readonly ServiceProvider _provider = postgres.CreateProvider();
 
     private ITaskRepository Sut => _provider.GetRequiredService<ITaskRepository>();
@@ -44,8 +46,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         int ticksFromAsOf, int expectedCount)
     {
         // Arrange
-        var reminderTask = BuildReminderTask();
-        reminderTask.DueAt = AsOf.AddTicks(ticksFromAsOf);
+        var reminderTask = BuildReminderTask(dueAt: AsOf.AddTicks(ticksFromAsOf));
         await SaveAsync(reminderTask);
 
         // Act
@@ -66,8 +67,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     public async Task GetDueRemindersAsync_TaskNotPending_ReturnsNothing(ReminderStatus status)
     {
         // Arrange
-        var reminderTask = BuildReminderTask();
-        reminderTask.Status = status;
+        var reminderTask = BuildReminderTask(dueAt: DueAnHourAgo, status: status);
         await SaveAsync(reminderTask);
 
         // Act
@@ -86,8 +86,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     public async Task GetDueRemindersAsync_TaskHasNoDueTime_ReturnsNothing()
     {
         // Arrange
-        var reminderTask = BuildReminderTask();
-        reminderTask.DueAt = null;
+        var reminderTask = BuildReminderTask(dueAt: null);
         await SaveAsync(reminderTask);
 
         // Act
@@ -106,8 +105,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     public async Task GetDueRemindersAsync_ReminderAlreadySent_ReturnsNothing()
     {
         // Arrange
-        var reminderTask = BuildReminderTask();
-        reminderTask.ReminderSentAt = AsOf;
+        var reminderTask = BuildReminderTask(dueAt: DueAnHourAgo, reminderSentAt: AsOf);
         await SaveAsync(reminderTask);
 
         // Act
@@ -126,12 +124,9 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     public async Task GetDueRemindersAsync_SeveralDue_ReturnsOldestFirst()
     {
         // Arrange
-        var oldest = BuildReminderTask();
-        oldest.DueAt = AsOf.AddHours(-3);
-        var middle = BuildReminderTask();
-        middle.DueAt = AsOf.AddHours(-2);
-        var newest = BuildReminderTask();
-        newest.DueAt = AsOf.AddHours(-1);
+        var oldest = BuildReminderTask(dueAt: AsOf.AddHours(-3));
+        var middle = BuildReminderTask(dueAt: AsOf.AddHours(-2));
+        var newest = BuildReminderTask(dueAt: AsOf.AddHours(-1));
 
         await SaveAsync(middle);
         await SaveAsync(newest);
@@ -155,12 +150,9 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     public async Task GetDueRemindersAsync_MoreDueThanLimit_ReturnsOldestWithinLimit()
     {
         // Arrange
-        var oldest = BuildReminderTask();
-        oldest.DueAt = AsOf.AddHours(-3);
-        var middle = BuildReminderTask();
-        middle.DueAt = AsOf.AddHours(-2);
-        var newest = BuildReminderTask();
-        newest.DueAt = AsOf.AddHours(-1);
+        var oldest = BuildReminderTask(dueAt: AsOf.AddHours(-3));
+        var middle = BuildReminderTask(dueAt: AsOf.AddHours(-2));
+        var newest = BuildReminderTask(dueAt: AsOf.AddHours(-1));
 
         await SaveAsync(newest);
         await SaveAsync(oldest);
@@ -175,13 +167,16 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         Assert.Equal(expected, result.Select(task => task.Id));
     }
 
-    private static ReminderTask BuildReminderTask() => new()
+    private static ReminderTask BuildReminderTask(
+        DateTimeOffset? dueAt,
+        ReminderStatus status = ReminderStatus.Pending,
+        DateTimeOffset? reminderSentAt = null) => new()
     {
         Id = Guid.NewGuid(),
         Title = "call the bank",
-        Status = ReminderStatus.Pending,
-        DueAt = AsOf.AddHours(-1),
-        ReminderSentAt = null,
+        Status = status,
+        DueAt = dueAt,
+        ReminderSentAt = reminderSentAt,
         CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
         UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
     };
