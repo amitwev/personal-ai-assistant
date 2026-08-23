@@ -419,9 +419,12 @@ Add to `EfTaskRepository`:
             .ToListAsync(ct);
 ```
 
-`t.DueAt != null` is not redundant with `t.DueAt <= asOfUtc`: SQL three-valued logic already
-excludes NULL from the comparison, but stating it keeps the C# readable and matches the index
-predicate's intent. Keep it.
+An earlier draft of this plan included `t.DueAt != null` here and argued it was worth keeping for
+readability. It was removed after mutation testing: deleting that clause killed no test, because
+SQL three-valued logic already excludes NULL from `due_at <= @now`. It was untested code, and
+while it was present no single-clause mutation could kill
+`GetDueRemindersAsync_TaskHasNoDueTime_ReturnsNothing` — two clauses each excluded nulls
+independently. Removing it makes that test the sole guard of null exclusion.
 
 - [ ] **Step 5: Add the partial index**
 

@@ -35,7 +35,6 @@ internal sealed class EfTaskRepository(AssistantDbContext db) : ITaskRepository
         await db.ReminderTasks
             .AsNoTracking()
             .Where(t => t.Status == ReminderStatus.Pending
-                        && t.DueAt != null
                         && t.DueAt <= asOfUtc
                         && t.ReminderSentAt == null)
             .OrderBy(t => t.DueAt)
