@@ -29,8 +29,10 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
 
     private ITaskRepository Sut => _provider.GetRequiredService<ITaskRepository>();
 
+    /// <inheritdoc/>
     public Task InitializeAsync() => postgres.ResetAsync();
 
+    /// <inheritdoc/>
     public async Task DisposeAsync() => await _provider.DisposeAsync();
 
     /// <summary>
