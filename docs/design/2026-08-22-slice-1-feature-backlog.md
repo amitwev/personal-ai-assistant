@@ -142,9 +142,30 @@ mandatory values missing in turn; every value present returns the settings uncha
   covers `.env`, `*.env`, and `appsettings.*.local.json`, but not `appsettings.Development.json`,
   and this repository is public.
 
-**F4b · Telegram integration test** — spec §7.1, §11.3
+**F4b · Telegram integration test** — spec §7.1, §11.3 · **done**
 A WireMock stub for the Telegram API in Docker Compose, and the automated test F4a deferred.
 *Tests:* exact recipient and exact text; a title containing `_` and `*` still delivers.
+*Settled at F4b:*
+- **WireMock is a service, not an in-process library.** Requested in review. Gains: the stub is
+  inspectable while a test is paused, it can serve a locally-run `Assistant.Worker` and not just
+  the test process, and one service will host the Anthropic and OpenRouter stubs at F9 and F13
+  rather than each test starting its own. Costs, stated because they are not obvious: these tests
+  now need Docker; verification moved from reading `server.LogEntries` in-process to `GET
+  /__admin/requests` over HTTP; and isolation became explicit — `DELETE /__admin/requests` is this
+  fixture's Respawn, run before every test, or the second test sees the first one's message.
+- **Named `Assistant.WireMock`, for the tool rather than the role.** The alternative,
+  `Assistant.ApiStubs`, survives swapping the tool and reads better once F9 and F13 add stubs to
+  the same service — but renaming it now, before anything depends on it, is cheap, and renaming it
+  once three features depend on it would not be.
+- **`WireMockCollection` is separate from `PostgresCollection` for now.** These tests need the
+  stub and no database. A test class can belong to only one xUnit collection, so F5 — the first
+  feature that needs a database and a stub together — merges the two definitions into one.
+- **The payload is asserted whole**, with `Assert.Equivalent(expected, actual, strict: true)`:
+  count, recipient, exact text, and parse mode in one assertion. A deliberate consequence: when F6
+  adds an inline keyboard, `reply_markup` appears in the body and `strict` fails this test until F6
+  updates it.
+- **The debt F4a took on is paid.** `TelegramNotifier` shipped with no automated test at F4a; F4b
+  closes that gap.
 
 **F5 · The scheduler fires due reminders ▶ observable** — spec §6.1, §6.2
 `IClock`/`SystemClock`, `IScheduledJob`, `ScheduledJobBase` (re-entrancy guard + try/catch),

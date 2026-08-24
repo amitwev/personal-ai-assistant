@@ -458,7 +458,7 @@ The trade is honest: one more command in the developer loop and in CI, against o
 
 The host is booted through a `HostApplicationFactory` helper that builds `Assistant.Worker`'s `IHost` with test overrides — `Telegram.Bot` and the LLM clients pointed at WireMock base addresses, connection string pointed at the compose service.
 
-WireMock runs in-process (1–5ms per call), so once Postgres is up a test lands around 20–60ms.
+WireMock runs as its own container, defined alongside Postgres in `compose.test.yaml`. Tests verify against it through its admin API (`GET /__admin/requests`), and the request log is cleared between tests the same way Respawn clears tables.
 
 This level is the refactor safety net: it asserts what the system does rather than how it is wired, so the interior can be restructured freely.
 
