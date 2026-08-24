@@ -456,9 +456,9 @@ This means the test fixture owns two responsibilities Testcontainers would have 
 
 The trade is honest: one more command in the developer loop and in CI, against one fewer dependency, and infrastructure defined in the same compose format the project already ships for production.
 
-The host is booted through a `HostApplicationFactory` helper that builds `Assistant.Worker`'s `IHost` with test overrides — `Telegram.Bot` and the LLM clients pointed at WireMock base addresses, connection string pointed at the compose service.
+Today, each test builds its own `ServiceCollection` and registers only the services it exercises — `Telegram.Bot` and the LLM clients pointed at WireMock base addresses, connection string pointed at the compose service — rather than composing `Assistant.Worker`'s full `IHost`. A `HostApplicationFactory` helper that boots the whole host with test overrides arrives with the first feature that needs the whole host composed.
 
-WireMock runs in-process (1–5ms per call), so once Postgres is up a test lands around 20–60ms.
+WireMock runs as its own container, defined alongside Postgres in `compose.test.yaml`. Tests verify against it through its admin API (`GET /__admin/requests`), and the request log is cleared between tests the same way Respawn clears tables.
 
 This level is the refactor safety net: it asserts what the system does rather than how it is wired, so the interior can be restructured freely.
 
@@ -567,7 +567,7 @@ Each step ends with a working, tested system.
 0. **Repo hygiene and agent docs, before any code** — `git init`, `.gitignore` (dotnet template), `.env.example`, `LICENSE` (MIT), stub `README.md`, `AGENTS.md` + `CLAUDE.md`, `docs/conventions.md`, and this design doc at `docs/design/slice-1-reminders.md`. Push public as `personal-ai-assistant`. Commit #1 specifically so no real secret can ever exist in history (§11.2), and so the conventions in §12 are readable by an agent before the first line of C# is written.
 1. **Skeleton** — solution with the six src projects and two test projects, `Directory.Build.props` and `Directory.Packages.props`, all architecture tests from §7.5 written and green against empty projects, GitHub Actions workflow running them. The rules exist before there is code to break them.
 2. **Models, contracts, interfaces** — POCOs, request/response types, every interface. No implementations. This is the shape of the system before anything does work.
-3. **Repository** — EF configuration, migrations, `AddAssistantRepository`, implementations of the intent-named repository methods, Testcontainers fixture running green.
+3. **Repository** — EF configuration, migrations, `AddAssistantRepository`, implementations of the intent-named repository methods, the Docker Compose Postgres fixture (§7.1) running green.
 4. **`TaskService` and its rules** — the single writer, mappers, every invariant from §4.2, full unit coverage.
 5. **Telegram round-trip** — long-poll listener, whitelist, echo reply, WireMock-based integration test. No LLM yet.
 6. **Reminder loop** — scheduler, `DueReminderJob`, delivery marking, restart catch-up and duplicate-suppression tests. Tasks seeded directly into the database. This is the reliability core, proven before any AI is involved.
@@ -651,7 +651,7 @@ Git history is permanent, which drives the ordering in §9: `.gitignore` and `.e
 
 The test design in §7 makes this possible, and it is worth stating in the README as a feature.
 
-WireMock.NET stands in for both the Telegram and LLM HTTP APIs, and Testcontainers provides PostgreSQL. GitHub's Ubuntu runners have Docker available, so the **entire suite — unit and integration — runs on a fork's pull request with zero credentials configured.** A contributor can validate a change end to end without an Anthropic account or a Telegram bot.
+WireMock.NET stands in for both the Telegram and LLM HTTP APIs, and PostgreSQL comes from Docker Compose (§7.1), not Testcontainers. GitHub's Ubuntu runners have Docker available, so the **entire suite — unit and integration — runs on a fork's pull request with zero credentials configured.** A contributor can validate a change end to end without an Anthropic account or a Telegram bot.
 
 The one exception is the prompt eval suite (§7.6), which calls a live model. It runs on a schedule from the primary repository using a repository secret, and never on pull requests from forks — where a secret would be exposed to untrusted code.
 

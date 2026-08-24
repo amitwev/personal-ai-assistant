@@ -20,7 +20,7 @@ dotnet restore
 dotnet build --no-restore                       # warnings are errors
 dotnet test tests/Assistant.UnitTests           # no Docker needed
 
-docker compose -f compose.test.yaml up -d       # Postgres on :55432
+docker compose -f compose.test.yaml up -d --build  # Postgres on :55432, WireMock on :58080
 dotnet test tests/Assistant.IntegrationTests
 docker compose -f compose.test.yaml down -v     # when finished
 ```
@@ -55,6 +55,7 @@ Migrations are applied automatically at startup by `AddAssistantRepository`.
 | `Assistant.Repository` | EF Core, DbContext, migrations | Interfaces, Models |
 | `Assistant.Impl` | Services, jobs, adapters | Interfaces, Contracts, Models |
 | `Assistant.Worker` | Composition root | everything |
+| `Assistant.WireMock` | Stub API server (Telegram today) run as the `wiremock` service in `compose.test.yaml`, port 58080 | nothing |
 
 `tests/Assistant.UnitTests/Architecture/` enforces this graph. If you change
 a project reference and the build goes red, the graph is the thing that is

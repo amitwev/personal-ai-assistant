@@ -1,0 +1,6 @@
+**/bin/
+**/obj/
+.git/
+.idea/
+.vs/
+.superpowers/

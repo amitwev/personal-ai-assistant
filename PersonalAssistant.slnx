@@ -15,5 +15,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/Assistant.IntegrationTests/Assistant.IntegrationTests.csproj" />
     <Project Path="tests/Assistant.UnitTests/Assistant.UnitTests.csproj" />
+    <Project Path="tests/Assistant.WireMock/Assistant.WireMock.csproj" />
   </Folder>
 </Solution>
