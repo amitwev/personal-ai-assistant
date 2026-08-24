@@ -20,7 +20,7 @@ dotnet restore
 dotnet build --no-restore                       # warnings are errors
 dotnet test tests/Assistant.UnitTests           # no Docker needed
 
-docker compose -f compose.test.yaml up -d       # Postgres on :55432, WireMock on :58080
+docker compose -f compose.test.yaml up -d --build  # Postgres on :55432, WireMock on :58080
 dotnet test tests/Assistant.IntegrationTests
 docker compose -f compose.test.yaml down -v     # when finished
 ```

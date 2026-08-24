@@ -14,7 +14,7 @@ namespace Assistant.IntegrationTests.Telegram;
 public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLifetime
 {
     private const string BotToken = "123456:TESTTOKEN";
-    private const long OwnerChatId = 472619570L;
+    private const long OwnerChatId = 100200300L;
 
     private ServiceProvider _provider = null!;
 
@@ -35,7 +35,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
 
     /// <summary>
     /// When a message is sent
-    /// And the text contains characters MarkdownV2 would treat as formatting
+    /// And its text is either plain or contains characters MarkdownV2 would treat as formatting
     /// Then exactly one request reaches Telegram, addressed to the owner, with the text unchanged.
     /// </summary>
     [Theory]

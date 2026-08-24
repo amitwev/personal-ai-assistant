@@ -12,12 +12,4 @@ TelegramStubs.Install(server);
 
 Console.WriteLine("Stub API listening on http://0.0.0.0:8080");
 
-var stopping = new TaskCompletionSource();
-Console.CancelKeyPress += (_, e) =>
-{
-    e.Cancel = true;
-    stopping.TrySetResult();
-};
-AppDomain.CurrentDomain.ProcessExit += (_, _) => stopping.TrySetResult();
-
-await stopping.Task;
+await Task.Delay(Timeout.Infinite);

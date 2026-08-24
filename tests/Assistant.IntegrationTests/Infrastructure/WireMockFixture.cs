@@ -79,7 +79,8 @@ public sealed class WireMockFixture : IAsyncLifetime
                       ?? [];
 
         return entries
-            .Where(entry => entry.Request.Path.EndsWith("/sendMessage", StringComparison.Ordinal))
+            .Where(entry => entry.Request.Path.EndsWith("/sendMessage", StringComparison.Ordinal)
+                            && entry.Request.Method == "POST")
             .Select(entry => JsonSerializer.Deserialize<SendMessagePayload>(entry.Request.Body)!)
             .ToList();
     }
@@ -99,6 +100,7 @@ public sealed class WireMockFixture : IAsyncLifetime
 
     private sealed record AdminRequest(
         [property: JsonPropertyName("Path")] string Path,
+        [property: JsonPropertyName("Method")] string Method,
         [property: JsonPropertyName("Body")] string Body);
 }
 
@@ -111,4 +113,16 @@ public sealed class WireMockFixture : IAsyncLifetime
 public sealed record SendMessagePayload(
     [property: JsonPropertyName("chat_id")] long ChatId,
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("parse_mode")] string ParseMode);
+    [property: JsonPropertyName("parse_mode")] string ParseMode)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>
+    /// Null when the request carried exactly the three expected fields. Populated otherwise, which
+    /// makes <c>Assert.Equivalent(strict: true)</c> fail — without this, extra fields are silently
+    /// discarded during deserialisation and the assertion cannot see them.
+    /// </value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}

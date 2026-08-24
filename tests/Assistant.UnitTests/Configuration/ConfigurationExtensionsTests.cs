@@ -11,7 +11,7 @@ namespace Assistant.UnitTests.Configuration;
 public sealed class ConfigurationExtensionsTests
 {
     private const string BotToken = "123456:TESTTOKEN";
-    private const string OwnerChatId = "472619570";
+    private const string OwnerChatId = "100200300";
 
     /// <summary>
     /// When the settings section is absent altogether
@@ -67,7 +67,7 @@ public sealed class ConfigurationExtensionsTests
         var expected = new TelegramSettings
         {
             BotToken = BotToken,
-            OwnerChatId = 472619570L,
+            OwnerChatId = 100200300L,
             BaseUrl = "http://localhost:58080",
         };
         var configuration = BuildConfiguration(new Dictionary<string, string?>
