@@ -9,7 +9,7 @@ using Telegram.Bot;
 namespace Assistant.Impl;
 
 /// <summary>
-/// Registers the assistant's outbound channels.
+/// Registers the assistant's outbound channels and domain services.
 /// </summary>
 public static class ImplServiceCollectionExtensions
 {

@@ -30,8 +30,10 @@ internal sealed class TaskService(ITaskRepository repository, IClock clock) : IT
             return Result.Failure(ErrorCode.DueTimeMissing);
         }
 
-        task.ReminderSentAt = clock.UtcNow;
-        task.UpdatedAt = clock.UtcNow;
+        var now = clock.UtcNow;
+
+        task.ReminderSentAt = now;
+        task.UpdatedAt = now;
         await repository.UpdateAsync(task, ct);
 
         return Result.Success();

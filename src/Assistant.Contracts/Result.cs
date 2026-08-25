@@ -3,7 +3,9 @@ namespace Assistant.Contracts;
 /// <summary>
 /// The outcome of an operation that either succeeds or is refused for a stated reason.
 /// </summary>
-/// <param name="Error">The reason it was refused, or <see langword="null"/> when it succeeded.</param>
+/// <param name="Error">
+/// The reason it was refused, or <see langword="null"/> when it succeeded.
+/// </param>
 /// <remarks>
 /// The reason is nullable rather than defaulting to <see cref="ErrorCode.Unknown"/>: every enum in
 /// this project reserves its first member for "nobody set this", so a success carrying
