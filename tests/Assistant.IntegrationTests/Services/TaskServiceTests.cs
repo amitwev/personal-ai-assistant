@@ -1,8 +1,8 @@
 using Assistant.Contracts;
 using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
-using Assistant.Models;
 using Microsoft.Extensions.DependencyInjection;
+using static Assistant.IntegrationTests.Infrastructure.ReminderTaskBuilder;
 
 namespace Assistant.IntegrationTests.Services;
 
@@ -20,12 +20,17 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
 
     private readonly ServiceProvider _provider = postgres.CreateProvider();
 
-    private ITaskService Sut => _provider.GetRequiredService<ITaskService>();
+    private ITaskService _sut = null!;
 
-    private ITaskRepository Repository => _provider.GetRequiredService<ITaskRepository>();
+    private ITaskRepository _repository = null!;
 
     /// <inheritdoc/>
-    public Task InitializeAsync() => postgres.ResetAsync();
+    public Task InitializeAsync()
+    {
+        _sut = _provider.GetRequiredService<ITaskService>();
+        _repository = _provider.GetRequiredService<ITaskRepository>();
+        return postgres.ResetAsync();
+    }
 
     /// <inheritdoc/>
     public async Task DisposeAsync() => await _provider.DisposeAsync();
@@ -33,7 +38,8 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
     /// <summary>
     /// When a due task's reminder has been delivered
     /// And it is recorded as sent
-    /// Then that task stops being due and every other due task remains due.
+    /// Then that task stops being due
+    /// And every other due task remains due.
     /// </summary>
     [Fact]
     public async Task MarkReminderSentAsync_TaskWasDue_StopsBeingDue()
@@ -45,11 +51,11 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
         await postgres.SaveAsync(untouched);
 
         // Act
-        var result = await Sut.MarkReminderSentAsync(delivered.Id, CancellationToken.None);
+        var result = await _sut.MarkReminderSentAsync(delivered.Id, CancellationToken.None);
 
         // Assert
         Assert.True(result.IsSuccess);
-        var stillDue = await Repository.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var stillDue = await _repository.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
         Assert.Equal(untouched.Id, Assert.Single(stillDue).Id);
     }
 
@@ -66,7 +72,7 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
         await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.MarkReminderSentAsync(reminderTask.Id, CancellationToken.None);
+        var result = await _sut.MarkReminderSentAsync(reminderTask.Id, CancellationToken.None);
 
         // Assert
         Assert.Equal(ErrorCode.DueTimeMissing, result.Error);
@@ -81,20 +87,9 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
     public async Task MarkReminderSentAsync_TaskDoesNotExist_IsRejected()
     {
         // Act
-        var result = await Sut.MarkReminderSentAsync(Guid.NewGuid(), CancellationToken.None);
+        var result = await _sut.MarkReminderSentAsync(Guid.NewGuid(), CancellationToken.None);
 
         // Assert
         Assert.Equal(ErrorCode.TaskNotFound, result.Error);
     }
-
-    private static ReminderTask BuildReminderTask(DateTimeOffset? dueAt) => new()
-    {
-        Id = Guid.NewGuid(),
-        Title = "call the bank",
-        Status = ReminderStatus.Pending,
-        DueAt = dueAt,
-        ReminderSentAt = null,
-        CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-        UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-    };
 }

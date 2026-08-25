@@ -3,12 +3,14 @@ using Assistant.Interfaces;
 using Assistant.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using static Assistant.IntegrationTests.Infrastructure.ReminderTaskBuilder;
 
 namespace Assistant.IntegrationTests.Repositories;
 
 /// <summary>
 /// Test class for <see cref="ITaskRepository"/>.
 /// </summary>
+/// <param name="postgres">The shared database fixture.</param>
 /// <remarks>
 /// Every instant here is a literal with at most six fractional digits. Postgres
 /// <c>timestamptz</c> holds microseconds while .NET ticks are 100ns, so a value taken from
@@ -19,12 +21,18 @@ namespace Assistant.IntegrationTests.Repositories;
 [Collection(PostgresCollection.Name)]
 public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifetime
 {
+    private static readonly DateTimeOffset DueAt = new(2026, 8, 22, 10, 30, 0, TimeSpan.Zero);
+
     private readonly ServiceProvider _provider = postgres.CreateProvider();
 
-    private ITaskRepository Sut => _provider.GetRequiredService<ITaskRepository>();
+    private ITaskRepository _sut = null!;
 
     /// <inheritdoc/>
-    public Task InitializeAsync() => postgres.ResetAsync();
+    public Task InitializeAsync()
+    {
+        _sut = _provider.GetRequiredService<ITaskRepository>();
+        return postgres.ResetAsync();
+    }
 
     /// <inheritdoc/>
     public async Task DisposeAsync() => await _provider.DisposeAsync();
@@ -38,11 +46,11 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
     public async Task FindAsync_TaskWasAdded_ReturnsTaskUnchanged()
     {
         // Arrange
-        var expected = BuildReminderTask();
+        var expected = BuildReminderTask(dueAt: DueAt);
         await postgres.SaveAsync(expected);
 
         // Act
-        var result = await Sut.FindAsync(expected.Id, CancellationToken.None);
+        var result = await _sut.FindAsync(expected.Id, CancellationToken.None);
 
         // Assert
         Assert.Equivalent(expected, result, strict: true);
@@ -57,11 +65,11 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
     public async Task FindAsync_TaskWasAdded_ReturnsInstantsInUtc()
     {
         // Arrange
-        var reminderTask = BuildReminderTask();
+        var reminderTask = BuildReminderTask(dueAt: DueAt);
         await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.FindAsync(reminderTask.Id, CancellationToken.None);
+        var result = await _sut.FindAsync(reminderTask.Id, CancellationToken.None);
 
         // Assert
         Assert.Equal(TimeSpan.Zero, result!.DueAt!.Value.Offset);
@@ -77,7 +85,7 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
     public async Task FindAsync_NoRowWithThatId_ReturnsNull()
     {
         // Act
-        var result = await Sut.FindAsync(Guid.NewGuid(), CancellationToken.None);
+        var result = await _sut.FindAsync(Guid.NewGuid(), CancellationToken.None);
 
         // Assert
         Assert.Null(result);
@@ -85,34 +93,24 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
 
     /// <summary>
     /// When a task is saved with no status set
-    /// Then it is refused, naming the status constraint.
+    /// Then it is rejected.
     /// </summary>
     [Fact]
-    public async Task AddAsync_StatusUnknown_RejectedByStatusConstraint()
+    public async Task AddAsync_StatusUnknown_IsRejected()
     {
         // Arrange
-        var reminderTask = BuildReminderTask(status: ReminderStatus.Unknown);
+        var reminderTask = BuildReminderTask(dueAt: DueAt, status: ReminderStatus.Unknown);
 
         // Act
         var exception = await Assert.ThrowsAnyAsync<Exception>(
-            () => Sut.AddAsync(reminderTask, CancellationToken.None));
+            () => _sut.AddAsync(reminderTask, CancellationToken.None));
 
         // Assert
+        // ConstraintName is what proves the database refused the row rather than EF or the application.
         Assert.Equal(
             "ck_reminder_tasks_status_known",
             FindPostgresException(exception)!.ConstraintName);
     }
-
-    private static ReminderTask BuildReminderTask(ReminderStatus status = ReminderStatus.Pending) => new()
-    {
-        Id = Guid.NewGuid(),
-        Title = "call the bank",
-        Status = status,
-        DueAt = new DateTimeOffset(2026, 8, 22, 10, 30, 0, TimeSpan.Zero),
-        ReminderSentAt = null,
-        CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-        UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-    };
 
     /// <summary>
     /// Walks an exception chain to the provider exception underneath it.

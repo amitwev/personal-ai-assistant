@@ -2,6 +2,7 @@ using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
 using Assistant.Models;
 using Microsoft.Extensions.DependencyInjection;
+using static Assistant.IntegrationTests.Infrastructure.ReminderTaskBuilder;
 
 namespace Assistant.IntegrationTests.Repositories;
 
@@ -27,10 +28,14 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
 
     private readonly ServiceProvider _provider = postgres.CreateProvider();
 
-    private ITaskRepository Sut => _provider.GetRequiredService<ITaskRepository>();
+    private ITaskRepository _sut = null!;
 
     /// <inheritdoc/>
-    public Task InitializeAsync() => postgres.ResetAsync();
+    public Task InitializeAsync()
+    {
+        _sut = _provider.GetRequiredService<ITaskRepository>();
+        return postgres.ResetAsync();
+    }
 
     /// <inheritdoc/>
     public async Task DisposeAsync() => await _provider.DisposeAsync();
@@ -50,7 +55,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         await postgres.SaveAsync(expected);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Equivalent(new[] { expected }, result, strict: true);
@@ -69,7 +74,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Empty(result);
@@ -90,7 +95,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Empty(result);
@@ -109,7 +114,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Empty(result);
@@ -128,7 +133,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Empty(result);
@@ -154,7 +159,7 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         var expected = new[] { oldest, middle, newest };
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         // Equivalent proves content and cardinality; it is blind to order, so Equal pins the sequence.
@@ -182,25 +187,11 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         var expected = new[] { oldest, middle };
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, 2, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, 2, CancellationToken.None);
 
         // Assert
         // Equivalent proves content and cardinality; it is blind to order, so Equal pins the sequence.
         Assert.Equivalent(expected, result, strict: true);
         Assert.Equal(expected.Select(task => task.Id), result.Select(task => task.Id));
     }
-
-    private static ReminderTask BuildReminderTask(
-        DateTimeOffset? dueAt,
-        ReminderStatus status = ReminderStatus.Pending,
-        DateTimeOffset? reminderSentAt = null) => new()
-    {
-        Id = Guid.NewGuid(),
-        Title = "call the bank",
-        Status = status,
-        DueAt = dueAt,
-        ReminderSentAt = reminderSentAt,
-        CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-        UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-    };
 }
