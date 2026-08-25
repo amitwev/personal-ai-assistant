@@ -39,7 +39,7 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
     {
         // Arrange
         var expected = BuildReminderTask();
-        await SaveThroughSeparateContextAsync(expected);
+        await postgres.SaveAsync(expected);
 
         // Act
         var result = await Sut.FindAsync(expected.Id, CancellationToken.None);
@@ -58,7 +58,7 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
     {
         // Arrange
         var reminderTask = BuildReminderTask();
-        await SaveThroughSeparateContextAsync(reminderTask);
+        await postgres.SaveAsync(reminderTask);
 
         // Act
         var result = await Sut.FindAsync(reminderTask.Id, CancellationToken.None);
@@ -113,23 +113,6 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
         CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
         UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
     };
-
-    /// <summary>
-    /// Saves a task through a provider of its own, then disposes it.
-    /// </summary>
-    /// <param name="reminderTask">The task to save.</param>
-    /// <returns>A task that completes once the row has been written and the context is gone.</returns>
-    /// <remarks>
-    /// Arrangement, not the act. Writing through a second context is what stops the change
-    /// tracker answering the read from memory and turning a round-trip assertion into a
-    /// comparison of an object with itself.
-    /// </remarks>
-    private async Task SaveThroughSeparateContextAsync(ReminderTask reminderTask)
-    {
-        await using var writer = postgres.CreateProvider();
-        await writer.GetRequiredService<ITaskRepository>()
-            .AddAsync(reminderTask, CancellationToken.None);
-    }
 
     /// <summary>
     /// Walks an exception chain to the provider exception underneath it.

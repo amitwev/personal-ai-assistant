@@ -1,5 +1,4 @@
 using Assistant.Contracts;
-using Assistant.Impl;
 using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
 using Assistant.Models;
@@ -41,7 +40,7 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
     {
         // Arrange
         var reminderTask = BuildReminderTask(dueAt: AsOf.AddHours(-1));
-        await SaveThroughSeparateContextAsync(reminderTask);
+        await postgres.SaveAsync(reminderTask);
 
         // Act
         var result = await Sut.MarkReminderSentAsync(reminderTask.Id, CancellationToken.None);
@@ -95,24 +94,4 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
         CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
         UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
     };
-
-    /// <summary>
-    /// Saves a task through a provider of its own, then disposes it.
-    /// </summary>
-    /// <param name="reminderTask">The task to save.</param>
-    /// <returns>
-    /// A task that completes once the row has been written and the context is gone.
-    /// </returns>
-    /// <remarks>
-    /// <see cref="Sut"/> and <see cref="Repository"/> resolve from the same root provider, so
-    /// they share one change tracker. Adding through it here and then letting the service update
-    /// the same row would attach a second, conflicting instance under the same key — writing
-    /// through a second context avoids that identity conflict.
-    /// </remarks>
-    private async Task SaveThroughSeparateContextAsync(ReminderTask reminderTask)
-    {
-        await using var writer = postgres.CreateProvider();
-        await writer.GetRequiredService<ITaskRepository>()
-            .AddAsync(reminderTask, CancellationToken.None);
-    }
 }

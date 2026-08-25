@@ -1,4 +1,6 @@
 using Assistant.Impl;
+using Assistant.Interfaces;
+using Assistant.Models;
 using Assistant.Repository;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -74,6 +76,23 @@ public sealed class PostgresFixture : IAsyncLifetime
         services.AddAssistantRepository(ConnectionString);
         services.AddAssistantServices();
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// Saves a task through a provider of its own, then disposes it.
+    /// </summary>
+    /// <param name="reminderTask">The task to save.</param>
+    /// <returns>A task that completes once the row is written and the context is gone.</returns>
+    /// <remarks>
+    /// Arrangement, not the act. Writing through a separate context is what stops the change
+    /// tracker answering a later read from memory, which would turn an assertion about the
+    /// database into a comparison of an object with itself.
+    /// </remarks>
+    public async Task SaveAsync(ReminderTask reminderTask)
+    {
+        await using var writer = CreateProvider();
+        await writer.GetRequiredService<ITaskRepository>()
+            .AddAsync(reminderTask, CancellationToken.None);
     }
 
     /// <summary>
