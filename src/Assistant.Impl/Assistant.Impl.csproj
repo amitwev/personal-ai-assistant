@@ -10,8 +10,14 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="System.Configuration.ConfigurationManager" />
     <PackageReference Include="Telegram.Bot" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Assistant.UnitTests" />
   </ItemGroup>
 
   <PropertyGroup>
