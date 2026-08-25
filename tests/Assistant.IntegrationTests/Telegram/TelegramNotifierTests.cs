@@ -18,6 +18,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
 
     private ServiceProvider _provider = null!;
 
+    /// <inheritdoc/>
     public Task InitializeAsync()
     {
         var services = new ServiceCollection();
@@ -31,6 +32,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
         return wireMock.ResetAsync();
     }
 
+    /// <inheritdoc/>
     public async Task DisposeAsync() => await _provider.DisposeAsync();
 
     /// <summary>

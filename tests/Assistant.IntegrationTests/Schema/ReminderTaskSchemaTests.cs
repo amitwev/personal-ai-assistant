@@ -25,8 +25,10 @@ namespace Assistant.IntegrationTests.Schema;
 [Collection(PostgresCollection.Name)]
 public sealed class ReminderTaskSchemaTests(PostgresFixture postgres) : IAsyncLifetime
 {
+    /// <inheritdoc/>
     public Task InitializeAsync() => postgres.ResetAsync();
 
+    /// <inheritdoc/>
     public Task DisposeAsync() => Task.CompletedTask;
 
     /// <summary>

@@ -2,7 +2,6 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS build
 WORKDIR /source
 
 COPY Directory.Packages.props Directory.Build.props ./
-COPY tests/Directory.Build.props tests/
 COPY tests/Assistant.WireMock/Assistant.WireMock.csproj tests/Assistant.WireMock/
 RUN dotnet restore tests/Assistant.WireMock/Assistant.WireMock.csproj
 

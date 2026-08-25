@@ -23,8 +23,10 @@ public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifeti
 
     private ITaskRepository Sut => _provider.GetRequiredService<ITaskRepository>();
 
+    /// <inheritdoc/>
     public Task InitializeAsync() => postgres.ResetAsync();
 
+    /// <inheritdoc/>
     public async Task DisposeAsync() => await _provider.DisposeAsync();
 
     /// <summary>
