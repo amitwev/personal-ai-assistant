@@ -100,6 +100,19 @@ as requirements rather than as implementation notes:
 
 Both are driven by `FakeTimeProvider.Advance`, so neither sleeps.
 
+**These two live in `Assistant.UnitTests`, not `Assistant.IntegrationTests.`** They
+reach no database, no HTTP, and no stub — a fake timer and two stub `IScheduledJob`s
+is the whole arrangement. Spec §7.2 puts exactly this case in the unit suite:
+behaviours "integration cannot reach cheaply", with "nothing to integrate". The
+three job tests in Task 5 are the opposite and stay integration.
+
+**Checked against spec §7.4's required-scenarios table.** Two of its rows are F5b's
+and are covered: "tick twice within the same minute → exactly one message" and
+"process down 09:58, restarts 10:03 → one message, delivered late, not lost". A
+third — "overdue by 3 days across 5 tasks → one summary message, not five" — is the
+24-hour collapse this feature defers. Task 5's third test therefore arranges **one**
+overdue task, not five, so it asserts nothing the deferred feature will contradict.
+
 ### D. Send, then mark — and the failure mode this chooses
 
 Per §6.2. `MarkReminderSentAsync` runs only after `SendAsync` returns. If the send
@@ -109,9 +122,16 @@ between the send and the mark, the reminder is delivered twice.
 That is the deliberate trade: at-least-once. A duplicate reminder is a small
 annoyance; a silently dropped one destroys the product's only promise.
 
-### E. The message is the task's title, with nothing added
+### E. The message is `⏰ ` followed by the task's title
 
-No prefix, no emoji, no rendering. `notifier.SendAsync(task.Title, ct)`.
+`notifier.SendAsync($"⏰ {task.Title}", ct)`.
+
+**Correction to an earlier draft of this plan**, which said "no prefix, no emoji".
+Spec §7.3 pins the delivered text exactly — `body.Text.Should().Be("⏰ Call the bank")` —
+so the prefix is a documented decision, not a flourish. The spec is binding and the
+plan was wrong.
+
+That §7.3 example also shows four inline buttons. Those are F6; F5b sends text only.
 
 **Carried debt, and the feature that closes it:** `TelegramNotifier` sends with
 `ParseMode.Html`, so a title containing `<` or `&` will be rejected by Telegram
@@ -189,6 +209,8 @@ tests/Assistant.IntegrationTests/
     Infrastructure/PostgresCollection.cs   -> IntegrationCollection.cs
     Infrastructure/WireMockCollection.cs   DELETED (merged)
     Jobs/DueReminderJobTests.cs            new
+
+tests/Assistant.UnitTests/
     Scheduling/ReminderSchedulerTests.cs   new
 ```
 
@@ -304,18 +326,26 @@ guarantees §6.1 assigns it:
 `PeriodicTimer` built from the injected `TimeProvider`. Each tick runs every
 registered job.
 
-Add to `Directory.Packages.props`:
-`<PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />`
-and reference it from `tests/Assistant.IntegrationTests` only. This is the task
-that first needs `FakeTimeProvider`, which is why the package arrives here rather
-than in Task 1.
+**Two package changes this task needs.** `Assistant.Impl` today references neither
+`Microsoft.Extensions.Hosting` nor its abstractions, so `BackgroundService` is not
+available to it yet:
+
+- `Directory.Packages.props` gains
+  `<PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.4" />`
+  (matching the `Microsoft.Extensions.Hosting` version already pinned), referenced
+  from `src/Assistant.Impl`.
+- `Directory.Packages.props` gains
+  `<PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />`,
+  referenced from `tests/Assistant.UnitTests` — the project these two tests live in.
+  This is the task that first needs `FakeTimeProvider`, which is why the package
+  arrives here rather than in Task 1.
 
 `AddAssistantScheduler(this IServiceCollection services)` registers
 `DueReminderJob` as an `IScheduledJob` and `ReminderScheduler` as a hosted service.
 It is a separate extension from `AddAssistantServices` so a test can compose the
 domain services without starting a background loop.
 
-**Two tests**, in `tests/Assistant.IntegrationTests/Scheduling/ReminderSchedulerTests.cs`,
+**Two tests**, in `tests/Assistant.UnitTests/Scheduling/ReminderSchedulerTests.cs`,
 both driven by `FakeTimeProvider.Advance` — no sleeping, no real timer:
 
 ```
