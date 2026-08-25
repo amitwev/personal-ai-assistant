@@ -374,7 +374,7 @@ A per-minute cap on LLM calls bounds cost if anything loops.
 
 ### 6.1 Scheduler
 
-A `PeriodicTimer` on a 30-second tick, injected with `IEnumerable<IScheduledJob>`. `ScheduledJobBase` holds a re-entrancy guard so a slow job cannot overlap itself, and every job runs inside try/catch: a throwing job must never terminate the loop or the host. Each successful tick touches the heartbeat file used by the container healthcheck (§8).
+A `PeriodicTimer` on a 30-second tick, injected with `IEnumerable<IScheduledJob>`. `ScheduledJobBase` holds a re-entrancy guard so a slow job cannot overlap itself, and every job runs inside try/catch: a throwing job must never terminate the loop or the host. Each successful tick touches the heartbeat file used by the container healthcheck (§8). **Deferred:** F5b shipped the scheduler without this. There is no heartbeat file and no container healthcheck yet — §8 describes the intent for when a container exists, not current behaviour.
 
 ### 6.2 `DueReminderJob`
 
@@ -387,9 +387,9 @@ ORDER BY due_at
 LIMIT @limit;
 ```
 
-There is deliberately no lower bound on `due_at` — that is what makes restart catch-up automatic. Because a long outage would otherwise produce a burst of individual messages, anything overdue by more than 24 hours is collapsed into a single summary message.
+There is deliberately no lower bound on `due_at` — that is what makes restart catch-up automatic. Because a long outage would otherwise produce a burst of individual messages, anything overdue by more than 24 hours is collapsed into a single summary message. **Deferred:** not built at F5b, which sends one message per overdue task no matter how overdue it is. §7.4's "overdue by 3 days across 5 tasks → one summary message, not five" scenario belongs to this collapse and is therefore deferred with it; F5b's third job test deliberately arranges one overdue task, not five, so it asserts nothing that the deferred behaviour would later contradict.
 
-**Delivery ordering: send, then mark.** The reverse (mark, then send) loses a reminder when the send fails after the write. At-least-once is the correct trade for this product. `delivery_attempts` caps retries at 3 so a persistent failure cannot loop indefinitely.
+**Delivery ordering: send, then mark.** The reverse (mark, then send) loses a reminder when the send fails after the write. At-least-once is the correct trade for this product. `delivery_attempts` caps retries at 3 so a persistent failure cannot loop indefinitely. **Deferred:** there is no `delivery_attempts` column yet and no retry cap — a persistent failure today retries forever, once per tick, rather than giving up after three.
 
 ### 6.3 `DailyBriefJob`
 
