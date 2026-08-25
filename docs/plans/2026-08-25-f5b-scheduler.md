@@ -450,6 +450,15 @@ Send **then** mark, per decision D. Do not wrap the pair in a try/catch here —
 `ScheduledJobBase` owns that boundary, and catching per task would silently swallow
 a Telegram outage into an infinite quiet loop.
 
+`AddAssistantScheduler` lands **here, not in Task 6**. `Assistant.IntegrationTests`
+references `Assistant.Worker`, which reaches `Assistant.Impl` only transitively, so the
+test cannot name an `internal DueReminderJob`. Registering through the public extension
+and resolving `IScheduledJob` is the seam the test should use anyway — it makes the test
+exercise the real wiring instead of a hand-built stand-in, the same reason
+`EfTaskRepository` is internal and reached through `ITaskRepository`. The extension
+registers the jobs as singletons and `ReminderScheduler` as a hosted service;
+`BuildServiceProvider` never starts hosted services, so the loop stays inert in the test.
+
 **Three tests**, in `tests/Assistant.IntegrationTests/Jobs/DueReminderJobTests.cs`,
 on the merged collection so both fixtures are available. Build the SUT from a
 provider that has the repository, the services and the notifier pointed at the
@@ -487,6 +496,9 @@ builder.Services.AddAssistantRepository(builder.Configuration.GetConnectionStrin
 builder.Services.AddAssistantServices();
 builder.Services.AddAssistantScheduler();
 ```
+
+`AddAssistantScheduler` already exists — Task 5 wrote it, because the job test needed a
+public seam to reach an internal job. Task 6 only calls it.
 
 Read the connection string the way the rest of the project reads settings; check
 how `compose.yaml` supplies it before inventing a key name. Keep the existing
