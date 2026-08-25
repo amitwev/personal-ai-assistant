@@ -74,7 +74,7 @@ would be a second place that defines due-ness, and the two would eventually
 disagree. This is the F5a pattern continuing — §4.2 lists eight methods on
 `ITaskService`, and each one arrives with the caller that needs it.
 
-### C. Three business tests through the job, two loop tests through the scheduler
+### C. Four business tests through the job, two loop tests through the scheduler
 
 The three behaviours the backlog names for F5b are all observable at the job:
 
@@ -156,6 +156,14 @@ between the send and the mark, the reminder is delivered twice.
 
 That is the deliberate trade: at-least-once. A duplicate reminder is a small
 annoyance; a silently dropped one destroys the product's only promise.
+
+**A fourth job test pins this**, added after the first three were written. Swapping
+the two lines to mark-then-send passed all 22 tests — the most consequential decision
+in the feature was resting on nothing but the source order. The test points the
+notifier at a dead port so the send throws, then asserts the task is *still due*.
+Under mark-then-send the row is already marked and the reminder is gone, which is the
+exact failure this feature exists to prevent. A decision worth a section of argument
+is worth a test.
 
 ### E. The message is `⏰ ` followed by the task's title
 
