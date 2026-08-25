@@ -211,8 +211,8 @@ due time, covering the public surface rather than the scheduler's route through 
 `IScheduledJob`, `ScheduledJobBase` (re-entrancy guard + try/catch), `ReminderScheduler` on a 30s
 `PeriodicTimer`, and `DueReminderJob`, calling `ITaskService.MarkReminderSentAsync` from F5a. Send
 **then** mark — at-least-once is deliberate.
-*Tests:* a due task produces exactly one message; a second tick produces none; a process
-restarted after the due time still delivers.
+*Tests:* a due task produces exactly one message; a second tick produces none; a process restarted
+after the due time still delivers; a delivery failure leaves the task still due.
 *Settled at F5b:*
 - **`TimeProvider` replaced `IClock`.** F5a had shipped a hand-rolled `IClock`/`SystemClock`
   three days earlier. F5b deleted both in favour of the BCL's `TimeProvider`, because
