@@ -1,3 +1,4 @@
+using Assistant.Impl;
 using Assistant.Repository;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -71,6 +72,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     {
         var services = new ServiceCollection();
         services.AddAssistantRepository(ConnectionString);
+        services.AddAssistantServices();
         return services.BuildServiceProvider();
     }
 
