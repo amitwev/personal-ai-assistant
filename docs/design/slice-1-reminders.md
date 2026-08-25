@@ -138,7 +138,7 @@ Consequence for design: repository methods are named by intent (`GetDueReminders
 | :--- | :--- |
 | `Models` | `ReminderTask`, `ChatMessage`, `DailyBriefLog`, `ReminderStatus`, `Priority` — plain POCOs |
 | `Contracts` | `CreateTaskRequest`, `UpdateTaskRequest`, `ListTasksRequest`, `TaskResponse`, `TaskListResponse`, `ReminderNotification`, `TaskFilter`; `Result`/`Error` types |
-| `Interfaces` | `ITaskService`, `IMessageHandler`, `ITaskRepository`, `IChatMessageRepository`, `IDailyBriefRepository`, `INotifier`, `IClock`, `IAssistantTool`, `IScheduledJob`, `ITaskAction`, `IChatClient` wrapper |
+| `Interfaces` | `ITaskService`, `IMessageHandler`, `ITaskRepository`, `IChatMessageRepository`, `IDailyBriefRepository`, `INotifier`, `IAssistantTool`, `IScheduledJob`, `ITaskAction`, `IChatClient` wrapper |
 | `Repository` | `AppDbContext`, EF configurations, migrations, `EfTaskRepository` and siblings, `AddAssistantRepository` |
 | `Impl` | Everything else implemented — see the folder layout below |
 | `Worker` | `Program.cs`, DI registration, options binding, hosted-service registration |
@@ -157,7 +157,7 @@ Assistant.Impl/
 ├─ Telegram/       TelegramListener, TelegramNotifier, CallbackRouter
 ├─ Ai/             IAnthropicApi, IOpenRouterApi (Refit), the IChatClient adapters,
 │                  FallbackChatClient
-└─ Scheduling/     ReminderScheduler, ScheduledJobBase, HeartbeatWriter, SystemClock
+└─ Scheduling/     ReminderScheduler, ScheduledJobBase, HeartbeatWriter
 ```
 
 ### 3.5 Process topology
@@ -180,7 +180,7 @@ Each interface is a point where behaviour is added by writing a new class, never
 | `IAssistantTool` | `CreateTask`, `ListTasks`, `UpdateTask`, `CompleteTask` | New capability → new class, auto-registered |
 | `IScheduledJob` | `DueReminderJob`, `DailyBriefJob` | New recurring job → new class; scheduler untouched |
 | `INotifier` | `TelegramNotifier` | Additional channel without touching job logic |
-| `IClock` | `SystemClock`, `FakeClock` | Makes every time-based rule testable |
+| `TimeProvider` | `TimeProvider.System`, `FakeTimeProvider` | Makes every time-based rule testable |
 | `IChatClient` | `AnthropicChatClient`, `OpenRouterChatClient`, `FallbackChatClient` | Provider change is configuration |
 
 `ReminderScheduler` injects `IEnumerable<IScheduledJob>` and knows nothing about the jobs it runs. Adding a third job requires no change to the scheduler.
@@ -438,7 +438,7 @@ Testability is a day-one requirement, and the driver behind the reference rules 
 
 ### 7.1 Default level: full-stack in Docker
 
-`Assistant.IntegrationTests` exercises the real host and DI container, a real PostgreSQL, and WireMock.NET standing in for the Telegram and LLM HTTP APIs. `FakeClock` replaces `SystemClock`.
+`Assistant.IntegrationTests` exercises the real host and DI container, a real PostgreSQL, and WireMock.NET standing in for the Telegram and LLM HTTP APIs. `FakeTimeProvider` replaces `TimeProvider.System`.
 
 **Postgres comes from Docker Compose, not Testcontainers.** `compose.test.yaml` at the repository root defines a Postgres service on a fixed port with a healthcheck. It is brought up once — by the developer locally, or by a CI step before `dotnet test` — and the suite connects to it.
 

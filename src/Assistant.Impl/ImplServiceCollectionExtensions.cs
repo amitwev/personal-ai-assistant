@@ -1,7 +1,6 @@
 using Assistant.Impl.Services;
 using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
-using Assistant.Impl.Time;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
@@ -41,7 +40,7 @@ public static class ImplServiceCollectionExtensions
     /// <returns>The same <paramref name="services"/>, for chaining.</returns>
     public static IServiceCollection AddAssistantServices(this IServiceCollection services)
     {
-        services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton(TimeProvider.System);
         services.AddScoped<ITaskService, TaskService>();
         return services;
     }
