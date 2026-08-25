@@ -1,6 +1,6 @@
-using Assistant.Impl.Jobs;
 using Assistant.Impl.Scheduling;
 using Assistant.Impl.Services;
+using Assistant.Impl.Services.Jobs;
 using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
 using Assistant.Interfaces;

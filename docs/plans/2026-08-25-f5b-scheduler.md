@@ -444,7 +444,7 @@ and the test does not wait on it when passing.
 
 ## Task 5: `DueReminderJob` and the three business tests
 
-`DueReminderJob` in `Assistant.Impl/Jobs/`, deriving from `ScheduledJobBase`,
+`DueReminderJob` in `Assistant.Impl/Services/Jobs/`, deriving from `ScheduledJobBase`,
 taking `ITaskService` and `INotifier`. `private const int BatchSize = 50;`
 
 ```

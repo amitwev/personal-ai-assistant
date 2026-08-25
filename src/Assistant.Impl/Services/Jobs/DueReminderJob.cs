@@ -2,7 +2,7 @@ using Assistant.Impl.Scheduling;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Assistant.Impl.Jobs;
+namespace Assistant.Impl.Services.Jobs;
 
 /// <summary>
 /// Delivers reminders whose due time has passed.
