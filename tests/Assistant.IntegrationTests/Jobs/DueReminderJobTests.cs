@@ -18,6 +18,7 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
 {
     private const string BotToken = "123456:TESTTOKEN";
     private const long OwnerChatId = 100200300L;
+    private const string UnreachableBaseUrl = "http://localhost:1";
 
     private ServiceProvider _provider = null!;
 
@@ -101,5 +102,38 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
 
         // Assert
         Assert.Single(await wireMock.SentMessagesAsync());
+    }
+
+    /// <summary>
+    /// When a task is due
+    /// And delivery fails
+    /// Then the task is still due for the next run.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_DeliveryFails_TaskIsStillDue()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.AddAssistantRepository(postgres.ConnectionString);
+        services.AddAssistantServices();
+        services.AddAssistantTelegram(new TelegramSettings
+        {
+            BotToken = BotToken, OwnerChatId = OwnerChatId, BaseUrl = UnreachableBaseUrl,
+        });
+        services.AddAssistantScheduler();
+        await using var provider = services.BuildServiceProvider();
+        var sut = provider.GetRequiredService<IScheduledJob>();
+
+        var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
+        await postgres.SaveAsync(task);
+
+        // Act
+        await Assert.ThrowsAnyAsync<Exception>(() => sut.RunAsync(CancellationToken.None));
+
+        // Assert
+        var repository = _provider.GetRequiredService<ITaskRepository>();
+        var stillDue = await repository.GetDueRemindersAsync(
+            DateTimeOffset.UtcNow, 100, CancellationToken.None);
+        Assert.Equal(task.Id, Assert.Single(stillDue).Id);
     }
 }
