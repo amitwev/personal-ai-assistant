@@ -442,7 +442,7 @@ taking `ITaskService` and `INotifier`. `private const int BatchSize = 50;`
 ```
 tasks = await taskService.GetDueRemindersAsync(BatchSize, ct)
 foreach task:
-    await notifier.SendAsync(task.Title, ct)          // send
+    await notifier.SendAsync($"⏰ {task.Title}", ct)   // send, per decision E
     await taskService.MarkReminderSentAsync(task.Id, ct)   // then mark
 ```
 
@@ -459,7 +459,7 @@ local builder.
 ```
 /// When a task is due
 /// And the job runs
-/// Then exactly one message is sent, carrying the task's title.
+/// Then exactly one message is sent, carrying the task's title behind the ⏰ prefix.
 ```
 
 ```
