@@ -96,7 +96,7 @@ as requirements rather than as implementation notes:
 | Behaviour | Why it is not a job test |
 | :--- | :--- |
 | A throwing job does not terminate the loop | needs two ticks and a job that throws on the first |
-| A slow job does not overlap itself | needs a tick to arrive while the previous run is still in flight |
+| A slow job does not overlap itself | belongs to `ScheduledJobBase`, not the loop — see C3 |
 
 Both are driven by `FakeTimeProvider.Advance`, so neither sleeps.
 
@@ -112,6 +112,41 @@ and are covered: "tick twice within the same minute → exactly one message" and
 third — "overdue by 3 days across 5 tasks → one summary message, not five" — is the
 24-hour collapse this feature defers. Task 5's third test therefore arranges **one**
 overdue task, not five, so it asserts nothing the deferred feature will contradict.
+
+### C2. Jobs are singletons, and each creates its own scope
+
+`ReminderScheduler` is a `BackgroundService` — a singleton. `DueReminderJob` needs
+`ITaskService`, which is **scoped** because it depends on the scoped `DbContext`.
+A singleton cannot consume a scoped service; with scope validation on, resolving it
+throws `Cannot consume scoped service 'ITaskService' from singleton`.
+
+The obvious fix — have the scheduler create a scope per tick and resolve
+`IEnumerable<IScheduledJob>` from it — **breaks the re-entrancy guard**, because a
+fresh scope produces a fresh job instance every tick and a per-instance guard on a
+per-tick object guards nothing.
+
+So: jobs are registered as **singletons**, injected into the scheduler as
+`IEnumerable<IScheduledJob>`, and `DueReminderJob` takes `IServiceScopeFactory`,
+opening a scope inside `ExecuteAsync` to resolve `ITaskService`. That keeps job
+instances stable, which is what makes the guard on `ScheduledJobBase` mean anything.
+
+### C3. The re-entrancy guard is a contract of the base class, not of the loop
+
+Worth being straight about, because it changes how the guard is tested.
+`ReminderScheduler` awaits each job sequentially inside one `while` loop. A slow job
+therefore blocks the loop, and the next `WaitForNextTickAsync` is never reached
+while it runs — so **the scheduler cannot produce an overlapping call in the first
+place**, and a test that tries to drive the guard by advancing the timer twice will
+pass whether or not the guard exists.
+
+That is the "passes when broken" shape this project has removed twice before.
+
+The guard is still worth having: §6.1 mandates it, and it is the documented contract
+of `ScheduledJobBase` — the base class must be safe against a caller that does not
+serialize, which is what a second scheduler or a non-awaiting dispatch would be.
+It is tested accordingly: **call `RunAsync` twice concurrently on the base class
+directly**, not through the scheduler, and assert the second call returned without
+executing. Test the contract where the contract lives.
 
 ### D. Send, then mark — and the failure mode this chooses
 
@@ -357,11 +392,15 @@ Arrange a stub `IScheduledJob` that throws the first time and records the second
 This is the test that proves the host survives a failing job.
 
 ```
-/// When a job is still running as the next tick arrives
-/// Then that tick is skipped rather than starting a second run.
+/// When a job is already running
+/// And it is asked to run again
+/// Then the second request returns without starting a second run.
 ```
-Arrange a stub job that blocks on a `TaskCompletionSource`, advance twice, assert
-it started exactly once, then release it.
+Arrange a stub deriving from `ScheduledJobBase` that blocks on a
+`TaskCompletionSource`. Call `RunAsync` twice **concurrently, directly on the job**
+— not through the scheduler, which serializes and so could never produce this (C3).
+Assert it started exactly once, then release the `TaskCompletionSource` and let both
+calls complete.
 
 Both stubs live in the test file. They are test doubles for `IScheduledJob`, not
 for `DueReminderJob` — the loop's contract is with the interface.
