@@ -27,9 +27,13 @@ docker compose -f compose.test.yaml down -v     # when finished
 
 ### Run locally
 
+Container packaging for the worker (image build, secret delivery, restart policy) is not
+yet in this repository — there is no `compose.yaml` and no worker Dockerfile, only
+`compose.test.yaml`, which serves the test suite. To run locally: start a Postgres, then
+
 ```bash
-docker compose up -d          # Postgres + worker; migrations apply on startup
-docker compose logs -f worker
+DatabaseSettings__ConnectionString="Host=localhost;Port=<port>;Database=<db>;Username=<user>;Password=<password>" \
+dotnet run --project src/Assistant.Worker
 ```
 
 The Telegram bot token goes in user secrets, never in `appsettings.Development.json` (this
@@ -43,7 +47,8 @@ dotnet ef migrations add <Name> \
   --project src/Assistant.Repository \
   --startup-project src/Assistant.Worker
 ```
-Migrations are applied automatically at startup by `AddAssistantRepository`.
+The Worker applies them at startup by calling `MigrateAssistantDatabaseAsync` explicitly;
+`AddAssistantRepository` itself never migrates.
 
 ## Project map
 
