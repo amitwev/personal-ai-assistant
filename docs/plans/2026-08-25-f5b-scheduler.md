@@ -211,9 +211,25 @@ the whole reason the abstraction exists; reading twice lets the pair drift.
 In `AddAssistantServices`, `services.AddSingleton<IClock, SystemClock>()` becomes
 `services.AddSingleton(TimeProvider.System)`.
 
-Add to `Directory.Packages.props`:
-`<PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />`
-and reference it from `tests/Assistant.IntegrationTests` only.
+**The `Microsoft.Extensions.TimeProvider.Testing` package is NOT added here.** No
+test needs `FakeTimeProvider` until Task 4, and a package reference nothing
+consumes is exactly the speculative dependency this project refuses. Task 4 adds
+it.
+
+**The binding spec changes in this same commit**, per `AGENTS.md`. Four places in
+`docs/design/slice-1-reminders.md` name the abstraction being deleted:
+
+| Line | Says | Becomes |
+| :--- | :--- | :--- |
+| §4 project table | `IClock` among the `Interfaces` types | drop it — `TimeProvider` is a BCL type, not one of ours |
+| §4 folder tree | `SystemClock` under `Scheduling/` | drop it |
+| §3.6 seam table | `IClock` / `SystemClock`, `FakeClock` | `TimeProvider` / `TimeProvider.System`, `FakeTimeProvider` |
+| §7.2 | "`FakeClock` replaces `SystemClock`" | "`FakeTimeProvider` replaces `TimeProvider.System`" |
+
+Do **not** rewrite the dated documents under `docs/plans/` or
+`docs/2026-08-16-*`. Those are point-in-time records of shipped work; editing them
+rewrites history rather than correcting a live claim. This is the same call Task 2
+made about `PostgresCollection`.
 
 **Verification:** the existing 19 integration tests and 18 unit tests must still
 pass, unchanged. If any test needed editing beyond a type name, the swap changed
@@ -287,6 +303,12 @@ guarantees §6.1 assigns it:
 `private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);` and a
 `PeriodicTimer` built from the injected `TimeProvider`. Each tick runs every
 registered job.
+
+Add to `Directory.Packages.props`:
+`<PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />`
+and reference it from `tests/Assistant.IntegrationTests` only. This is the task
+that first needs `FakeTimeProvider`, which is why the package arrives here rather
+than in Task 1.
 
 `AddAssistantScheduler(this IServiceCollection services)` registers
 `DueReminderJob` as an `IScheduledJob` and `ReminderScheduler` as a hosted service.
@@ -401,7 +423,8 @@ Before opening the PR:
 - [ ] `dotnet clean && dotnet build` — zero warnings
 - [ ] Integration tests green, run three times (see Task 2)
 - [ ] Unit tests green
-- [ ] No `IClock` or `SystemClock` reference survives anywhere, including docs
+- [ ] No `IClock` or `SystemClock` reference survives in `src/`, `tests/`, or the
+      binding spec — dated plan docs keep theirs
 - [ ] `DueReminderJob` does not name `ITaskRepository` — and the architecture test
       is what proves it, so confirm that test actually ran
 - [ ] No test sleeps, and no test depends on wall-clock time
