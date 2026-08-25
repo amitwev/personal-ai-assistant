@@ -18,6 +18,8 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
 
     private ServiceProvider _provider = null!;
 
+    private INotifier _sut = null!;
+
     /// <inheritdoc/>
     public Task InitializeAsync()
     {
@@ -29,6 +31,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
             BaseUrl = wireMock.Url,
         });
         _provider = services.BuildServiceProvider();
+        _sut = _provider.GetRequiredService<INotifier>();
         return wireMock.ResetAsync();
     }
 
@@ -38,7 +41,9 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
     /// <summary>
     /// When a message is sent
     /// And its text is either plain or contains characters MarkdownV2 would treat as formatting
-    /// Then exactly one request reaches Telegram, addressed to the owner, with the text unchanged.
+    /// Then exactly one request reaches Telegram
+    /// And it is addressed to the owner
+    /// And the text is unchanged.
     /// </summary>
     [Theory]
     [InlineData("Call the bank")]
@@ -47,10 +52,9 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
     {
         // Arrange
         var expected = new SendMessagePayload(OwnerChatId, text, "Html");
-        var sut = _provider.GetRequiredService<INotifier>();
 
         // Act
-        await sut.SendAsync(text, CancellationToken.None);
+        await _sut.SendAsync(text, CancellationToken.None);
 
         // Assert
         Assert.Equivalent(expected, Assert.Single(await wireMock.SentMessagesAsync()), strict: true);

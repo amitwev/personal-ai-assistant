@@ -218,19 +218,12 @@ public sealed class ReminderTask
 
 Anemic models remove the entity as an enforcement point, so the rules need one owner instead. `TaskService` (in `Impl/Services`) is the only type permitted to mutate a `ReminderTask`. Jobs, tool handlers, and button actions all call it; none of them touch a repository directly.
 
-`ITaskService` lives in `Interfaces`, so it takes request types from `Contracts` and returns models directly — no mapping on internal calls:
+`ITaskService` lives in `Interfaces`, so it takes request types from `Contracts` and returns models directly — no mapping on internal calls. The interface grows a method per feature that needs one, arriving with its caller rather than all at once; slice 1 ships one method so far:
 
 ```csharp
 public interface ITaskService
 {
-    Task<ReminderTask> CreateAsync(CreateTaskRequest request, CancellationToken ct);
-    Task<Result> CompleteAsync(Guid id, CancellationToken ct);
-    Task<Result> CancelAsync(Guid id, CancellationToken ct);
-    Task<Result> SnoozeAsync(Guid id, TimeSpan duration, CancellationToken ct);
-    Task<Result> RescheduleAsync(Guid id, DateTimeOffset newDueAtUtc, CancellationToken ct);
     Task<Result> MarkReminderSentAsync(Guid id, CancellationToken ct);
-    Task<Result> RecordDeliveryFailureAsync(Guid id, CancellationToken ct);
-    Task<IReadOnlyList<ReminderTask>> QueryAsync(TaskFilter filter, int limit, CancellationToken ct);
 }
 ```
 
@@ -238,7 +231,7 @@ Rules enforced inside it, in one place:
 
 - Completing a cancelled task is rejected.
 - Completing an already-completed task is a no-op, so a button can be tapped twice safely.
-- Snooze and reschedule clear `ReminderSentAt` and reset `DeliveryAttempts`, so the task fires again. **This pairing is the reason a single writer is mandatory** — setting one without the other silently stops a task from ever reminding again.
+- Snooze and reschedule will clear `ReminderSentAt` and reset `DeliveryAttempts`, so the task fires again — the shape this pairing takes once `DeliveryAttempts` returns (F11); today only `MarkReminderSentAsync` sets `ReminderSentAt`, and there is no `DeliveryAttempts` column yet. **This pairing is the reason a single writer is mandatory** — setting one without the other silently stops a task from ever reminding again.
 - Snooze or reschedule on a completed task is rejected.
 - `MarkReminderSent` on a task with no `DueAt` is rejected.
 - `UpdatedAt` is stamped on every mutation.
@@ -247,7 +240,7 @@ Three defences keep this from eroding:
 
 1. An architecture test asserting no type under `Impl.Services.Jobs` or `Impl.Services.Actions` references a repository interface.
 2. Database check constraints for the hard invariants (§4.3).
-3. Unit tests targeting `TaskService` directly, covering every rule above.
+3. Integration tests targeting `TaskService` directly, covering every rule above — the highest level able to reach them; `AGENTS.md` rules out a unit test for behaviour an integration test already covers.
 
 ### 4.3 Schema
 

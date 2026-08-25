@@ -2,6 +2,7 @@ using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
 using Assistant.Models;
 using Microsoft.Extensions.DependencyInjection;
+using static Assistant.IntegrationTests.Infrastructure.ReminderTaskBuilder;
 
 namespace Assistant.IntegrationTests.Repositories;
 
@@ -27,10 +28,14 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
 
     private readonly ServiceProvider _provider = postgres.CreateProvider();
 
-    private ITaskRepository Sut => _provider.GetRequiredService<ITaskRepository>();
+    private ITaskRepository _sut = null!;
 
     /// <inheritdoc/>
-    public Task InitializeAsync() => postgres.ResetAsync();
+    public Task InitializeAsync()
+    {
+        _sut = _provider.GetRequiredService<ITaskRepository>();
+        return postgres.ResetAsync();
+    }
 
     /// <inheritdoc/>
     public async Task DisposeAsync() => await _provider.DisposeAsync();
@@ -47,10 +52,10 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     {
         // Arrange
         var expected = BuildReminderTask(dueAt: AsOf.AddTicks(ticksFromAsOf));
-        await SaveAsync(expected);
+        await postgres.SaveAsync(expected);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Equivalent(new[] { expected }, result, strict: true);
@@ -66,10 +71,10 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     {
         // Arrange
         var reminderTask = BuildReminderTask(dueAt: AsOf.AddTicks(TicksPerMicrosecond));
-        await SaveAsync(reminderTask);
+        await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Empty(result);
@@ -87,10 +92,10 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     {
         // Arrange
         var reminderTask = BuildReminderTask(dueAt: DueAnHourAgo, status: status);
-        await SaveAsync(reminderTask);
+        await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Empty(result);
@@ -106,10 +111,10 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     {
         // Arrange
         var reminderTask = BuildReminderTask(dueAt: null);
-        await SaveAsync(reminderTask);
+        await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Empty(result);
@@ -125,10 +130,10 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     {
         // Arrange
         var reminderTask = BuildReminderTask(dueAt: DueAnHourAgo, reminderSentAt: AsOf);
-        await SaveAsync(reminderTask);
+        await postgres.SaveAsync(reminderTask);
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         Assert.Empty(result);
@@ -147,14 +152,14 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         var middle = BuildReminderTask(dueAt: AsOf.AddHours(-2));
         var newest = BuildReminderTask(dueAt: AsOf.AddHours(-1));
 
-        await SaveAsync(middle);
-        await SaveAsync(newest);
-        await SaveAsync(oldest);
+        await postgres.SaveAsync(middle);
+        await postgres.SaveAsync(newest);
+        await postgres.SaveAsync(oldest);
 
         var expected = new[] { oldest, middle, newest };
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
 
         // Assert
         // Equivalent proves content and cardinality; it is blind to order, so Equal pins the sequence.
@@ -175,44 +180,18 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
         var middle = BuildReminderTask(dueAt: AsOf.AddHours(-2));
         var newest = BuildReminderTask(dueAt: AsOf.AddHours(-1));
 
-        await SaveAsync(newest);
-        await SaveAsync(oldest);
-        await SaveAsync(middle);
+        await postgres.SaveAsync(newest);
+        await postgres.SaveAsync(oldest);
+        await postgres.SaveAsync(middle);
 
         var expected = new[] { oldest, middle };
 
         // Act
-        var result = await Sut.GetDueRemindersAsync(AsOf, 2, CancellationToken.None);
+        var result = await _sut.GetDueRemindersAsync(AsOf, 2, CancellationToken.None);
 
         // Assert
         // Equivalent proves content and cardinality; it is blind to order, so Equal pins the sequence.
         Assert.Equivalent(expected, result, strict: true);
         Assert.Equal(expected.Select(task => task.Id), result.Select(task => task.Id));
-    }
-
-    private static ReminderTask BuildReminderTask(
-        DateTimeOffset? dueAt,
-        ReminderStatus status = ReminderStatus.Pending,
-        DateTimeOffset? reminderSentAt = null) => new()
-    {
-        Id = Guid.NewGuid(),
-        Title = "call the bank",
-        Status = status,
-        DueAt = dueAt,
-        ReminderSentAt = reminderSentAt,
-        CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-        UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
-    };
-
-    /// <summary>
-    /// Saves a task through a provider of its own, then disposes it.
-    /// </summary>
-    /// <param name="reminderTask">The task to save.</param>
-    /// <returns>A task that completes once the row has been written.</returns>
-    private async Task SaveAsync(ReminderTask reminderTask)
-    {
-        await using var writer = postgres.CreateProvider();
-        await writer.GetRequiredService<ITaskRepository>()
-            .AddAsync(reminderTask, CancellationToken.None);
     }
 }

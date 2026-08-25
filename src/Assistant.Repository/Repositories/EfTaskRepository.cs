@@ -40,4 +40,11 @@ internal sealed class EfTaskRepository(AssistantDbContext db) : ITaskRepository
             .OrderBy(t => t.DueAt)
             .Take(limit)
             .ToListAsync(ct);
+
+    /// <inheritdoc/>
+    public async Task UpdateAsync(ReminderTask task, CancellationToken ct)
+    {
+        db.ReminderTasks.Update(task);
+        await db.SaveChangesAsync(ct);
+    }
 }

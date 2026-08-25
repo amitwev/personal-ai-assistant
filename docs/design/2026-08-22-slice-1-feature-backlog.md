@@ -46,7 +46,8 @@ which cannot be verified without a read. Resolved by splitting one level differe
 
 - **`AddAsync` and `FindAsync` ship together.** Separating them would produce one PR whose write
   is unverifiable and another whose read has nothing to read — each untestable alone, which is
-  exactly the split the size budget forbids. `FindAsync` is ~15 lines and is consumed at F5 (the scheduler loads a task to mark it sent).
+  exactly the split the size budget forbids. `FindAsync` is ~15 lines and is consumed at F5a
+  (`TaskService` reads a task before marking its reminder sent).
 - **The schema and harness move to their own feature (F1).** That is where the bulk lives: the
   first migration, `compose.test.yaml`, and the Postgres fixture. It is independently testable
   without any repository method, because a malformed row can be rejected by the database using a
@@ -88,7 +89,7 @@ model, the hand-written `Contracts` mapper, which arrives at F10. F2's is model 
 model. Different defects: a mapper that forgets a field, versus a column mapping that forgets one.
 *Settled at F2:*
 - **`AddAsync` surfaces the database exception untranslated.** `Result` and `ErrorCode` live in
-  `Contracts`, which F5 brings to life with `TaskService`; inventing them here would build types
+  `Contracts`, which F5a brings to life with `TaskService`; inventing them here would build types
   nothing consumes for three features. Translation belongs to the single writer, not the
   repository.
 - **`FindAsync` reads with `AsNoTracking`**, and tests write through one provider and read
@@ -158,7 +159,7 @@ A WireMock stub for the Telegram API in Docker Compose, and the automated test F
   the same service — but renaming it now, before anything depends on it, is cheap, and renaming it
   once three features depend on it would not be.
 - **`WireMockCollection` is separate from `PostgresCollection` for now.** These tests need the
-  stub and no database. A test class can belong to only one xUnit collection, so F5 — the first
+  stub and no database. A test class can belong to only one xUnit collection, so F5b — the first
   feature that needs a database and a stub together — merges the two definitions into one.
 - **The payload is asserted whole**, with `Assert.Equivalent(expected, actual, strict: true)`:
   count, recipient, exact text, and parse mode in one assertion. A deliberate consequence: when F6
@@ -167,22 +168,57 @@ A WireMock stub for the Telegram API in Docker Compose, and the automated test F
 - **The debt F4a took on is paid.** `TelegramNotifier` shipped with no automated test at F4a; F4b
   closes that gap.
 
-**F5 · The scheduler fires due reminders ▶ observable** — spec §6.1, §6.2
-`IClock`/`SystemClock`, `IScheduledJob`, `ScheduledJobBase` (re-entrancy guard + try/catch),
-`ReminderScheduler` on a 30s `PeriodicTimer`, and `DueReminderJob`. Send **then** mark —
-at-least-once is deliberate.
-**`TaskService` begins here, not at F6.** Spec §4.2 forbids a job touching a repository, so
-marking a reminder sent must go through `ITaskService.MarkReminderSentAsync`. That drags in
-`Result` and `ErrorCode` — this is where `Contracts` stops being an empty project.
-`ITaskRepository` gains `UpdateAsync`.
-*Tests:* a due task produces exactly one message; a second tick produces none; a process
-restarted after the due time still delivers.
+**F5a · `TaskService`, the single writer** — spec §3.6, §4.2 · **done**
+`IClock`/`SystemClock`, `Result`/`ErrorCode` in `Contracts`, `ITaskService.MarkReminderSentAsync`,
+and `TaskService` — the only type permitted to change a task. `ITaskRepository` gains
+`UpdateAsync`. Plan: `docs/plans/2026-08-25-f5a-task-service.md`.
+*Tests:* three, all integration, all asserting business outcomes rather than fields — a due task
+recorded as sent stops being due; a task with no due time is refused; a task that does not exist
+is refused.
 *Carried from F1:* `ck_reminder_tasks_sent_requires_due` is currently proven only by a raw-SQL
 insert. `MarkReminderSentAsync` is the only code that ever sets `ReminderSentAt`, so it is the
 one place the application can violate that rule. Note the path is unreachable through the
-scheduler — `GetDueRemindersAsync` filters on `due_at <= now`, so a task without a due time never
-reaches the job. The test therefore calls the service directly with a task that has no due time,
-covering the public surface rather than the scheduler's route through it.
+scheduler F5b adds — `GetDueRemindersAsync` filters on `due_at <= now`, so a task without a due
+time never reaches the job. The test therefore calls the service directly with a task that has no
+due time, covering the public surface rather than the scheduler's route through it.
+*Settled at F5a:*
+- **F5 is split.** F5a is the single writer; F5b is the scheduler and remains the observable
+  milestone.
+- **`IClock` landed in F5a, not F5b.** Spec §4.2 requires `UpdatedAt` stamped on every mutation,
+  and doing that from `DateTimeOffset.UtcNow` inside `TaskService` would make the rule untestable
+  in the one class §4.2 says must be directly testable.
+- **`Result` and `ErrorCode` were designed here because the spec never defines them.** §4.2 lists
+  methods returning `Task<Result>` and stops. `Error` is nullable rather than an
+  `Unknown`-means-success sentinel, since every enum in this project reserves its first member for
+  "nobody set this". No message string — nothing renders one until F10.
+- **`ITaskService` starts with one method.** §4.2 shows eight; the rest arrive with their
+  callers. Adding a method to a data-access surface is a modification no design avoids.
+- **The tests assert business outcomes.** The headline test asserts the task stops being due, not
+  that a field changed — proven by a mutation that stamps `UpdatedAt` and leaves
+  `ReminderSentAt`, which failed exactly that test while the two refusal tests passed.
+- **The paired-write rule is proven in the `ReminderSentAt` direction only.** The reverse
+  mutation — stamp `ReminderSentAt`, drop `UpdatedAt` — passes the whole suite unchanged, because
+  nothing observable yet depends on `UpdatedAt`. Left honest rather than closed with an assertion
+  invented to cover it.
+- **Known sharp edge, carried to F10:** `AddAsync` leaves the entity tracked in its scope's
+  `DbContext`. A caller that adds a task and then mutates it through `TaskService` inside one
+  scope hits an EF identity conflict. No current call site does; F10 is the first that plausibly
+  could.
+
+**F5b · The scheduler fires due reminders ▶ observable** — spec §6.1, §6.2
+`IScheduledJob`, `ScheduledJobBase` (re-entrancy guard + try/catch), `ReminderScheduler` on a 30s
+`PeriodicTimer`, and `DueReminderJob`, calling `ITaskService.MarkReminderSentAsync` from F5a. Send
+**then** mark — at-least-once is deliberate.
+*Tests:* a due task produces exactly one message; a second tick produces none; a process
+restarted after the due time still delivers.
+*Still owed from F5a:* there is no `xunit.runner.json` and no `[assembly: CollectionBehavior]`, so
+xUnit's default parallelism runs distinct collections concurrently, and `PostgresFixture.ResetAsync`
+truncates every table. So every class touching Postgres must live in the one merged
+`PostgresCollection`/`WireMockCollection`, or one collection's reset will truncate another's rows
+mid-test — which presents as a flaky database, not as a test-isolation bug. This is the first
+feature needing both a database and a stub, and it also owes the architecture test forbidding a job
+from touching a repository directly. Neither could be built at F5a: no job existed yet, so the
+architecture test would have passed over zero types.
 **Milestone: the product works.** Seed a row, watch your phone.
 
 **F6 · Complete a task from a button ▶ observable** — spec §6.4
@@ -208,7 +244,7 @@ ambiguity.
 **F9 · Send to the model and get a tool call** — spec §5.2, §5.3, §12.3
 `IChatClient`, `IAnthropicApi` via Refit, the system prompt carrying current local time, and
 `CreateTaskTool` as the first `IAssistantTool`. Adds `CreateTaskRequest` to `Contracts`
-(`Result` and `ErrorCode` arrived at F5).
+(`Result` and `ErrorCode` arrived at F5a).
 *Tests:* free text produces the expected tool call against a WireMock'd provider.
 
 **F10 · Store the parsed task and reply ▶ observable** — spec §5.1
@@ -268,10 +304,10 @@ an HTTP API, calendar integration, voice transcription, multi-user. Spec §1.3 a
 
 ## 6. Order and dependencies
 
-F1 → F2 → F3 → F4a → F5 is a chain; nothing in it can be reordered. F4b depends only on F4a and
-does not block F5. F6 needs F5. F7 is independent of F1-F6 and could move earlier if you want to
-talk to the bot sooner.
+F1 → F2 → F3 → F4a → F5a → F5b is a chain; nothing in it can be reordered. F4b depends only on
+F4a and does not block F5a. F6 needs F5b. F7 is independent of F1-F6 and could move earlier if you
+want to talk to the bot sooner.
 F8 → F9 → F10 is a chain. F11-F14 each depend only on F10.
 
-Three milestones are worth pausing on: **F5** (a reminder actually fires), **F10** (the whole
+Three milestones are worth pausing on: **F5b** (a reminder actually fires), **F10** (the whole
 loop works), **F14** (it runs on a VPS).

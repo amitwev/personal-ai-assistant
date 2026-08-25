@@ -43,4 +43,12 @@ public interface ITaskRepository
     /// </returns>
     Task<IReadOnlyList<ReminderTask>> GetDueRemindersAsync(
         DateTimeOffset asOfUtc, int limit, CancellationToken ct);
+
+    /// <summary>
+    /// Saves changes to an existing task.
+    /// </summary>
+    /// <param name="task">The task to save.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes when the row has been written.</returns>
+    Task UpdateAsync(ReminderTask task, CancellationToken ct);
 }

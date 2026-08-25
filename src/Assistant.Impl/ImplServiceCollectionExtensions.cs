@@ -1,5 +1,7 @@
+using Assistant.Impl.Services;
 using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
+using Assistant.Impl.Time;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
@@ -7,7 +9,7 @@ using Telegram.Bot;
 namespace Assistant.Impl;
 
 /// <summary>
-/// Registers the assistant's outbound channels.
+/// Registers the assistant's outbound channels and domain services.
 /// </summary>
 public static class ImplServiceCollectionExtensions
 {
@@ -29,6 +31,18 @@ public static class ImplServiceCollectionExtensions
         services.AddSingleton(settings);
         services.AddSingleton<ITelegramBotClient>(client);
         services.AddSingleton<INotifier, TelegramNotifier>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the assistant's domain services.
+    /// </summary>
+    /// <param name="services">The container to add registrations to.</param>
+    /// <returns>The same <paramref name="services"/>, for chaining.</returns>
+    public static IServiceCollection AddAssistantServices(this IServiceCollection services)
+    {
+        services.AddSingleton<IClock, SystemClock>();
+        services.AddScoped<ITaskService, TaskService>();
         return services;
     }
 }

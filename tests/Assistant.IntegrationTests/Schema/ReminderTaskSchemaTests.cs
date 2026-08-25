@@ -18,8 +18,8 @@ namespace Assistant.IntegrationTests.Schema;
 /// constraint is covered elsewhere and this test can go. If only this test fails, it is still
 /// the sole guard, so keep it. F2 applied this check to the status constraint: dropping
 /// ck_reminder_tasks_status_known failed both this class's raw-SQL test and
-/// TaskRepositoryTests.AddAsync_StatusUnknown_RejectedByStatusConstraint, so the raw-SQL test
-/// for that constraint was retired in favor of the application-level one.
+/// TaskRepositoryTests.AddAsync_StatusUnknown_IsRejected, so the raw-SQL test for that
+/// constraint was retired in favor of the application-level one.
 /// </para>
 /// </remarks>
 [Collection(PostgresCollection.Name)]
@@ -34,17 +34,19 @@ public sealed class ReminderTaskSchemaTests(PostgresFixture postgres) : IAsyncLi
     /// <summary>
     /// When a row is inserted with reminder_sent_at set and due_at NULL
     /// And the insert is attempted directly with raw SQL
-    /// Then it throws, naming ck_reminder_tasks_sent_requires_due as the violated constraint.
+    /// Then it is rejected.
     /// </summary>
     /// <remarks>
-    /// Retirement candidate at F5, which adds an application-level test through
-    /// MarkReminderSentAsync. F5's test has to call the service directly: the scheduler cannot
-    /// reach this state, because GetDueRemindersAsync filters on due_at and so never returns a
-    /// task without one. As above, F5 only replaces this test if its assertion depends on the
-    /// database rejecting the row. Apply the check in the class remarks.
+    /// The retirement check described in the class remarks was run at F5a: with
+    /// <c>ck_reminder_tasks_sent_requires_due</c> dropped from the live database, the suite
+    /// reported 1 failed / 18 passed, and this test was the sole failure. F5a's
+    /// <c>MarkReminderSentAsync_TaskHasNoDueTime_IsRejected</c> asserts
+    /// <c>ErrorCode.DueTimeMissing</c>, which is the application refusing before the row ever
+    /// reaches Postgres, so it does not depend on the database rejecting anything and cannot
+    /// replace this test. This remains the only guard for the constraint.
     /// </remarks>
     [Fact]
-    public async Task Insert_ReminderSentWithoutDueTime_ViolatesSentRequiresDueConstraint()
+    public async Task Insert_ReminderSentWithoutDueTime_IsRejected()
     {
         // Arrange
         await using var connection = new NpgsqlConnection(postgres.ConnectionString);
@@ -59,6 +61,7 @@ public sealed class ReminderTaskSchemaTests(PostgresFixture postgres) : IAsyncLi
         var ex = await Assert.ThrowsAnyAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
 
         // Assert
+        // ConstraintName is what proves the database refused the row rather than EF or the application.
         Assert.Equal("ck_reminder_tasks_sent_requires_due", ex.ConstraintName);
     }
 }
