@@ -1,5 +1,6 @@
 using Assistant.Contracts;
 using Assistant.Interfaces;
+using Assistant.Models;
 
 namespace Assistant.Impl.Services;
 
@@ -38,4 +39,8 @@ internal sealed class TaskService(ITaskRepository repository, TimeProvider timeP
 
         return Result.Success();
     }
+
+    /// <inheritdoc/>
+    public Task<IReadOnlyList<ReminderTask>> GetDueRemindersAsync(int limit, CancellationToken ct) =>
+        repository.GetDueRemindersAsync(timeProvider.GetUtcNow(), limit, ct);
 }
