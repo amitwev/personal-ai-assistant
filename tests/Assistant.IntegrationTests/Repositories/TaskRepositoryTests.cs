@@ -18,7 +18,7 @@ namespace Assistant.IntegrationTests.Repositories;
 /// clock's resolution, which is what would make such a test pass on one machine and fail on
 /// another.
 /// </remarks>
-[Collection(PostgresCollection.Name)]
+[Collection(IntegrationCollection.Name)]
 public sealed class TaskRepositoryTests(PostgresFixture postgres) : IAsyncLifetime
 {
     private static readonly DateTimeOffset DueAt = new(2026, 8, 22, 10, 30, 0, TimeSpan.Zero);

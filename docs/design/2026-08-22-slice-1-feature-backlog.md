@@ -158,9 +158,10 @@ A WireMock stub for the Telegram API in Docker Compose, and the automated test F
   `Assistant.ApiStubs`, survives swapping the tool and reads better once F9 and F13 add stubs to
   the same service — but renaming it now, before anything depends on it, is cheap, and renaming it
   once three features depend on it would not be.
-- **`WireMockCollection` is separate from `PostgresCollection` for now.** These tests need the
-  stub and no database. A test class can belong to only one xUnit collection, so F5b — the first
-  feature that needs a database and a stub together — merges the two definitions into one.
+- **`WireMockCollection` was separate from `PostgresCollection` at first.** These tests needed
+  the stub and no database. A test class can belong to only one xUnit collection, so F5b — the
+  first feature needing a database and a stub together — merged the two definitions into
+  `IntegrationCollection`.
 - **The payload is asserted whole**, with `Assert.Equivalent(expected, actual, strict: true)`:
   count, recipient, exact text, and parse mode in one assertion. A deliberate consequence: when F6
   adds an inline keyboard, `reply_markup` appears in the body and `strict` fails this test until F6
@@ -214,7 +215,7 @@ restarted after the due time still delivers.
 *Still owed from F5a:* there is no `xunit.runner.json` and no `[assembly: CollectionBehavior]`, so
 xUnit's default parallelism runs distinct collections concurrently, and `PostgresFixture.ResetAsync`
 truncates every table. So every class touching Postgres must live in the one merged
-`PostgresCollection`/`WireMockCollection`, or one collection's reset will truncate another's rows
+`IntegrationCollection`, or one collection's reset will truncate another's rows
 mid-test — which presents as a flaky database, not as a test-isolation bug. This is the first
 feature needing both a database and a stub, and it also owes the architecture test forbidding a job
 from touching a repository directly. Neither could be built at F5a: no job existed yet, so the

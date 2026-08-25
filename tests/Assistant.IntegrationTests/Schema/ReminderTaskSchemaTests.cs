@@ -22,7 +22,7 @@ namespace Assistant.IntegrationTests.Schema;
 /// constraint was retired in favor of the application-level one.
 /// </para>
 /// </remarks>
-[Collection(PostgresCollection.Name)]
+[Collection(IntegrationCollection.Name)]
 public sealed class ReminderTaskSchemaTests(PostgresFixture postgres) : IAsyncLifetime
 {
     /// <inheritdoc/>
