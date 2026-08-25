@@ -345,21 +345,34 @@ public interface IScheduledJob
 }
 ```
 
-`ScheduledJobBase` in `Assistant.Impl/Scheduling/` — abstract, holding the two
-guarantees §6.1 assigns it:
+**The two guarantees split across two types**, by who owns each promise. §6.1's
+sentence — "`ScheduledJobBase` holds a re-entrancy guard so a slow job cannot
+overlap itself, and every job runs inside try/catch" — reads naturally as one type
+doing both, but they do not belong together:
 
-- **Re-entrancy guard.** A tick arriving while the previous run is still in flight
-  is skipped, not queued. Use `Interlocked.CompareExchange` on an `int` flag —
-  a `SemaphoreSlim` would make the second tick wait, which is queueing.
-- **try/catch.** The job's exception is caught and swallowed at this boundary so
-  it cannot reach the loop. Derived classes implement `ExecuteAsync`; `RunAsync`
-  is the sealed wrapper that applies both.
+- **Re-entrancy guard → `ScheduledJobBase`.** It is per-job state, and it must hold
+  even against a caller that does not serialize.
+- **try/catch → `ReminderScheduler`.** The promise is "a throwing job must never
+  terminate the loop or the host", and that is the *loop's* promise to keep. Put it
+  in the base class instead and a job implementing `IScheduledJob` directly — which
+  the interface permits — takes the whole host down. The guarantee has to sit where
+  it cannot be bypassed.
+
+`ScheduledJobBase` in `Assistant.Impl/Scheduling/` — abstract, no constructor
+dependencies at all. `RunAsync` applies the guard with
+`Interlocked.CompareExchange` on an `int` flag (a `SemaphoreSlim` would make the
+second caller *wait*, which is queueing, not skipping), then calls the abstract
+`ExecuteAsync` derived classes implement.
 
 `ReminderScheduler` in `Assistant.Impl/Scheduling/` — a `BackgroundService` taking
-`IEnumerable<IScheduledJob>` and `TimeProvider`, with
+`IEnumerable<IScheduledJob>`, `TimeProvider` and `ILogger<ReminderScheduler>`, with
 `private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);` and a
 `PeriodicTimer` built from the injected `TimeProvider`. Each tick runs every
-registered job.
+registered job, each inside its own try/catch that logs and continues.
+
+**The exception is logged, not swallowed silently.** §6.5 requires it, and this is
+a product whose entire promise is that nothing is dropped — a persistent Telegram
+failure that leaves no trace is the worst possible failure mode here.
 
 **Two package changes this task needs.** `Assistant.Impl` today references neither
 `Microsoft.Extensions.Hosting` nor its abstractions, so `BackgroundService` is not
@@ -375,13 +388,19 @@ available to it yet:
   This is the task that first needs `FakeTimeProvider`, which is why the package
   arrives here rather than in Task 1.
 
-`AddAssistantScheduler(this IServiceCollection services)` registers
-`DueReminderJob` as an `IScheduledJob` and `ReminderScheduler` as a hosted service.
-It is a separate extension from `AddAssistantServices` so a test can compose the
-domain services without starting a background loop.
+**No `AddAssistantScheduler` in this task.** There is no job to register until
+Task 5, and an extension method that wires a scheduler to zero jobs is a
+registration nothing consumes. It arrives in Task 6 with the Worker wiring, where
+both the scheduler and the job exist. The two tests here construct
+`ReminderScheduler` directly and need no container.
 
-**Two tests**, in `tests/Assistant.UnitTests/Scheduling/ReminderSchedulerTests.cs`,
-both driven by `FakeTimeProvider.Advance` — no sleeping, no real timer:
+Add `Microsoft.Extensions.Logging.Abstractions` to `Directory.Packages.props` and
+to `src/Assistant.Impl` as well — do not rely on it flowing transitively from
+Hosting.Abstractions, since `CentralPackageTransitivePinningEnabled` is on.
+
+**Two tests in two files**, each testing the type that owns its guarantee:
+`tests/Assistant.UnitTests/Scheduling/ReminderSchedulerTests.cs` and
+`tests/Assistant.UnitTests/Scheduling/ScheduledJobBaseTests.cs`.
 
 ```
 /// When a job throws on one tick
@@ -402,8 +421,18 @@ Arrange a stub deriving from `ScheduledJobBase` that blocks on a
 Assert it started exactly once, then release the `TaskCompletionSource` and let both
 calls complete.
 
-Both stubs live in the test file. They are test doubles for `IScheduledJob`, not
-for `DueReminderJob` — the loop's contract is with the interface.
+Each stub lives in its own test file. They are test doubles for `IScheduledJob`
+and `ScheduledJobBase`, never for `DueReminderJob` — each type's contract is with
+the abstraction, not with the one job that happens to exist today.
+
+**On making the scheduler test deterministic.** `FakeTimeProvider.Advance` fires the
+timer synchronously, but the loop's continuation resumes on the thread pool, so
+asserting immediately after `Advance` races the loop. Do not paper over this with a
+delay. Have the stub signal each run through a `TaskCompletionSource`, and await
+that signal between advances: advance, await run 1, advance, await run 2. Await
+with a generous timeout (`WaitAsync(TimeSpan.FromSeconds(5))`) so a genuine hang
+fails the test instead of hanging CI — that timeout is a safety net, not a sleep,
+and the test does not wait on it when passing.
 
 ## Task 5: `DueReminderJob` and the three business tests
 
