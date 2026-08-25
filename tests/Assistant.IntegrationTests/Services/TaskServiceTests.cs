@@ -33,21 +33,24 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
     /// <summary>
     /// When a due task's reminder has been delivered
     /// And it is recorded as sent
-    /// Then the task is no longer due, so the reminder is never delivered twice.
+    /// Then that task stops being due and every other due task remains due.
     /// </summary>
     [Fact]
     public async Task MarkReminderSentAsync_TaskWasDue_StopsBeingDue()
     {
         // Arrange
-        var reminderTask = BuildReminderTask(dueAt: AsOf.AddHours(-1));
-        await postgres.SaveAsync(reminderTask);
+        var delivered = BuildReminderTask(dueAt: AsOf.AddHours(-2));
+        var untouched = BuildReminderTask(dueAt: AsOf.AddHours(-1));
+        await postgres.SaveAsync(delivered);
+        await postgres.SaveAsync(untouched);
 
         // Act
-        var result = await Sut.MarkReminderSentAsync(reminderTask.Id, CancellationToken.None);
+        var result = await Sut.MarkReminderSentAsync(delivered.Id, CancellationToken.None);
 
         // Assert
         Assert.True(result.IsSuccess);
-        Assert.Empty(await Repository.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None));
+        var stillDue = await Repository.GetDueRemindersAsync(AsOf, NoLimit, CancellationToken.None);
+        Assert.Equal(untouched.Id, Assert.Single(stillDue).Id);
     }
 
     /// <summary>
@@ -60,7 +63,7 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
     {
         // Arrange
         var reminderTask = BuildReminderTask(dueAt: null);
-        await Repository.AddAsync(reminderTask, CancellationToken.None);
+        await postgres.SaveAsync(reminderTask);
 
         // Act
         var result = await Sut.MarkReminderSentAsync(reminderTask.Id, CancellationToken.None);

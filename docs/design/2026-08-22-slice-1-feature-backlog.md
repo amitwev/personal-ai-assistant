@@ -196,6 +196,10 @@ due time, covering the public surface rather than the scheduler's route through 
 - **The tests assert business outcomes.** The headline test asserts the task stops being due, not
   that a field changed — proven by a mutation that stamps `UpdatedAt` and leaves
   `ReminderSentAt`, which failed exactly that test while the two refusal tests passed.
+- **The paired-write rule is proven in the `ReminderSentAt` direction only.** The reverse
+  mutation — stamp `ReminderSentAt`, drop `UpdatedAt` — passes the whole suite unchanged, because
+  nothing observable yet depends on `UpdatedAt`. Left honest rather than closed with an assertion
+  invented to cover it.
 - **Known sharp edge, carried to F10:** `AddAsync` leaves the entity tracked in its scope's
   `DbContext`. A caller that adds a task and then mutates it through `TaskService` inside one
   scope hits an EF identity conflict. No current call site does; F10 is the first that plausibly
@@ -207,10 +211,14 @@ due time, covering the public surface rather than the scheduler's route through 
 **then** mark — at-least-once is deliberate.
 *Tests:* a due task produces exactly one message; a second tick produces none; a process
 restarted after the due time still delivers.
-*Still owed from F5a:* the `PostgresCollection`/`WireMockCollection` merge — this is the first
-feature needing both — and the architecture test forbidding a job from touching a repository
-directly. Neither could be built at F5a: no job existed yet, so the architecture test would have
-passed over zero types.
+*Still owed from F5a:* there is no `xunit.runner.json` and no `[assembly: CollectionBehavior]`, so
+xUnit's default parallelism runs distinct collections concurrently, and `PostgresFixture.ResetAsync`
+truncates every table. So every class touching Postgres must live in the one merged
+`PostgresCollection`/`WireMockCollection`, or one collection's reset will truncate another's rows
+mid-test — which presents as a flaky database, not as a test-isolation bug. This is the first
+feature needing both a database and a stub, and it also owes the architecture test forbidding a job
+from touching a repository directly. Neither could be built at F5a: no job existed yet, so the
+architecture test would have passed over zero types.
 **Milestone: the product works.** Seed a row, watch your phone.
 
 **F6 · Complete a task from a button ▶ observable** — spec §6.4
