@@ -40,6 +40,9 @@ The Telegram bot token goes in user secrets, never in `appsettings.Development.j
 repository is public); user secrets only load in `Development`, so commands that need it require
 `DOTNET_ENVIRONMENT=Development dotnet run --project src/Assistant.Worker -- send-test-message`.
 
+For a full walkthrough — stub and real Telegram, seeding a due reminder, and verifying it is
+delivered at most once — see `docs/e2e-local.md`.
+
 ### Database migrations
 
 ```bash
