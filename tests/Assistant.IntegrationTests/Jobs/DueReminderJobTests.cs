@@ -48,10 +48,10 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
     /// <summary>
     /// When a task is due
     /// And the job runs
-    /// Then exactly one message is sent, carrying the task's title behind the ⏰ prefix.
+    /// Then exactly one message is sent, carrying the task's title.
     /// </summary>
     [Fact]
-    public async Task RunAsync_TaskIsDue_SendsItsTitleBehindThePrefix()
+    public async Task RunAsync_TaskIsDue_SendsItsTitle()
     {
         // Arrange
         var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
@@ -62,7 +62,7 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
 
         // Assert
         var sent = Assert.Single(await wireMock.SentMessagesAsync());
-        Assert.Equal($"⏰ {task.Title}", sent.Text);
+        Assert.Equal(task.Title, sent.Text);
     }
 
     /// <summary>

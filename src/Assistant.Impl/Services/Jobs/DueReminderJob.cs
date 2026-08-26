@@ -30,7 +30,7 @@ internal sealed class DueReminderJob(IServiceScopeFactory scopeFactory, INotifie
 
         foreach (var task in tasks)
         {
-            await notifier.SendAsync($"⏰ {task.Title}", ct);
+            await notifier.SendAsync(task.Title, ct);
             await taskService.MarkReminderSentAsync(task.Id, ct);
         }
     }
