@@ -56,7 +56,7 @@ This inverts the roadmap in the original spec, where proactive reminders were Ph
 | Hosting | Cheap VPS (Hetzner/DO), Docker Compose | Proactive push requires genuine 24/7 uptime |
 | Host type | Worker Service (Generic Host), no web server | No inbound HTTP in slice 1 |
 | Telegram transport | Long polling | No public domain, cert, or open port; self-reconnecting |
-| Timezone | `Asia/Jerusalem`, fixed for slice 1 | YAGNI. Configurable zones are a later slice (§12.6) |
+| Timezone | `Asia/Jerusalem`, fixed for slice 1 | YAGNI. Configurable zones are a later slice (§12.7) |
 | HTTP clients | Refit for every HTTP API this project calls itself | Typed interfaces, declarative, WireMock-friendly (§12.3) |
 | Documentation | XML doc comments on every public member, enforced by the build | §12.1 |
 | Mapping | Extension methods only | §12.2 |
@@ -100,7 +100,7 @@ Models      →  (nothing)
 Contracts   →  (nothing — BCL only)
 Interfaces  →  Models, Contracts
 Repository  →  Interfaces, Models
-Impl        →  Interfaces, Contracts, Models        ✗ never Repository
+Impl        →  Interfaces, Contracts, Models        never Repository
 Worker      →  everything
 UnitTests   →  Impl, Interfaces, Contracts, Models
 IntegrationTests → Worker (boots the real host)
@@ -330,7 +330,7 @@ The current local time is injected on every call:
 
 Without this the model has no basis for resolving "tomorrow" and will guess.
 
-**Jerusalem is fixed in slice 1**, in the prompt and in `LocalTimeResolver`. This is a deliberate YAGNI call: making the zone configurable is a small change (§12.6) and there is no second user waiting for it. The README states the limitation plainly rather than implying multi-zone support that does not exist.
+**Jerusalem is fixed in slice 1**, in the prompt and in `LocalTimeResolver`. This is a deliberate YAGNI call: making the zone configurable is a small change (§12.7) and there is no second user waiting for it. The README states the limitation plainly rather than implying multi-zone support that does not exist.
 
 ### 5.3 Tools
 
@@ -482,7 +482,7 @@ sent.Should().HaveCount(1);                        // exactly one, not "at least
 
 var body = SendMessagePayload.Parse(sent.Single());
 body.ChatId.Should().Be(KnownChatId);
-body.Text.Should().Be("⏰ Call the bank");          // exact string, not Contains
+body.Text.Should().Be("Call the bank");             // exact string, not Contains
 body.Buttons().Should().Equal("Done", "Snooze 1h", "Tomorrow", "Edit");
 
 task.DueAt.Should().Be(DateTimeOffset.Parse("2026-08-17T07:00:00Z"));
@@ -827,10 +827,37 @@ Two consequences worth knowing before you hit them:
 
 **This rule is not build-enforced, and that is deliberate.** The compiler emits an ordinary
 constructor either way, so no reflection test can tell the two apart. The analyzer that can
-(`IDE0290`) needs `.editorconfig`, which this project does not use (§12.6). It is a review rule,
+(`IDE0290`) needs `.editorconfig`, which this project does not use (§12.7). It is a review rule,
 checked by reading.
 
-### 12.6 Deferred conventions
+### 12.6 No emoji
+
+**No file in this repository contains an emoji.** Not source, not tests, not documentation, not
+commit messages, and not the text the bot sends. A friendly tone is not an exception clause;
+nothing here needs decoration to read as approachable, and the rule does not bend for a message
+that only the assistant will ever read.
+
+The case against them is concrete, not aesthetic. Emoji render at inconsistent widths across
+fonts and terminals, and this project's documents are full of ASCII diagrams and reference
+tables — §3.2, the directory tree in §11.1 — whose alignment depends on every character being
+one column wide; a pictogram silently breaks that for whoever's renderer disagrees with the
+author's. In a diff, an emoji is one opaque glyph: `git diff` shows that the line changed, not
+what changed, and a reviewer cannot tell which pictogram replaced which without opening a
+codepoint table. They are not greppable without already knowing the codepoint — you cannot
+search a codebase for a character you cannot type. And inside a message body an emoji is one
+more character that has to survive `ParseMode.Html` escaping intact, on top of the escaping debt
+the feature backlog already owes to F7 — one more way for a reminder to fail for a reason that
+has nothing to do with what it says. None of that buys anything a word would not.
+
+So: use the word, or use nothing. The due-reminder message is the task title alone, with no
+prefix — it arrives from the assistant, in a chat only the assistant writes to, so there is no
+reader for a pictogram to orient and nothing left for it to disambiguate.
+
+**This rule is not build-enforced, and that is deliberate — the same way §12.5 is honest about
+`IDE0290`.** Catching it would need a Unicode-range scan wired into CI, and nothing here runs
+one. It is a review rule, checked by reading.
+
+### 12.7 Deferred conventions
 
 | Item | Trigger |
 | :--- | :--- |

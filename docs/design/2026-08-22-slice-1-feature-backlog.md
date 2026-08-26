@@ -26,7 +26,7 @@ implementation or a real extension point does.
 
 **Definition of done.** A feature is done when: it builds with zero warnings, its tests pass,
 every new public member has a three-line `<summary>`, and no code was added that nothing
-exercises. Features marked **▶ observable** must also be demonstrable on a real phone.
+exercises. Features marked **observable** must also be demonstrable on a real phone.
 
 **Size budget.** No pull request exceeds **1000 changed lines**, and smaller is better. Where a
 feature would breach that, it is split along a line that leaves both halves independently
@@ -207,7 +207,7 @@ due time, covering the public surface rather than the scheduler's route through 
   scope hits an EF identity conflict. No current call site does; F10 is the first that plausibly
   could.
 
-**F5b · The scheduler fires due reminders ▶ observable** — spec §6.1, §6.2 · **done**
+**F5b · The scheduler fires due reminders · observable** — spec §6.1, §6.2 · **done**
 `IScheduledJob`, `ScheduledJobBase` (re-entrancy guard + try/catch), `ReminderScheduler` on a 30s
 `PeriodicTimer`, and `DueReminderJob`, calling `ITaskService.MarkReminderSentAsync` from F5a. Send
 **then** mark — at-least-once is deliberate.
@@ -261,13 +261,17 @@ after the due time still delivers; a delivery failure leaves the task still due.
   containing `<` or `&` will be rejected by Telegram with a 400. Unreachable at F5b — the only way
   a task exists is a hand-written SQL insert — but F7 is the first feature where a person can type
   a title, and F7 owes the escaping.
+- **The reminder message lost its clock-emoji prefix on review.** `DueReminderJob` sent the title
+  behind a pictogram; the repository's owner asked for it gone, and the delivered message is now
+  the task title alone. The same review settled a repository-wide rule barring emoji outright
+  (conventions §12.6): not in source, tests, documentation, commit messages, or bot message text.
 **Milestone: the product works.** Verified against a local Postgres with Telegram pointed at the
 WireMock stub: a row seeded two hours overdue, and the stub received exactly one `sendMessage`
-carrying `⏰ Call the bank` within the tick interval; the row was marked sent and no later tick
+carrying the task's title within the tick interval; the row was marked sent and no later tick
 redelivered it. The same check against the real Telegram API is still owed by the repository's
 owner, since it needs their bot token.
 
-**F6 · Complete a task from a button ▶ observable** — spec §6.4
+**F6 · Complete a task from a button · observable** — spec §6.4
 `ITaskAction` + `DoneAction`, `ICallbackHandler` + `CallbackRouter`, the `v1:<action>:<id>`
 callback codec, in-place message edit, and `ITaskService.CompleteAsync`. `ReminderTask` regains
 `CompletedAt`, which also brings back the `ck_completed_consistency` check constraint.
@@ -293,7 +297,7 @@ ambiguity.
 (`Result` and `ErrorCode` arrived at F5a).
 *Tests:* free text produces the expected tool call against a WireMock'd provider.
 
-**F10 · Store the parsed task and reply ▶ observable** — spec §5.1
+**F10 · Store the parsed task and reply · observable** — spec §5.1
 `ITaskService.CreateAsync`, the mapping extension methods, and the reply rendered with its
 inline keyboard. `ReminderTask` regains `Notes`, which the capture path is first to write.
 *Tests:* "call the bank tomorrow at 10" ends as a row with the right UTC instant and a reply
@@ -308,7 +312,7 @@ carrying the right buttons.
 single writer. `ReminderTask` regains `DeliveryAttempts`; the retry cap enters the due query here.
 *Tests:* snooze 1h fires at exactly +1h, not immediately; the sent marker is cleared.
 
-**F12 · Daily brief ▶ observable** — spec §6.3
+**F12 · Daily brief · observable** — spec §6.3
 `DailyBriefLog` + `daily_brief_log` (its primary key is the once-per-day check),
 `IDailyBriefRepository.TryClaimAsync`, `DailyBriefJob` at 07:00 local, no cutoff.
 `ReminderTask` regains `Priority` — the brief is the first thing that orders by it (spec §3.3).
