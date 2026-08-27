@@ -24,9 +24,8 @@ This trips people up, so read it before you start typing commands.
 `src/Assistant.Worker/Properties/launchSettings.json`, which sets
 `DOTNET_ENVIRONMENT=Development` for you. That means **user secrets load automatically on a
 plain `dotnet run`** — you do not need to export `DOTNET_ENVIRONMENT` yourself for this to
-work. (Passing `--no-launch-profile` turns this off, which is why AGENTS.md sets the
-variable explicitly for the `send-test-message` diagnostic: that command is meant to work
-the same way with or without the launch profile.)
+work. (Passing `--no-launch-profile` turns this off, and with it the automatic
+`DOTNET_ENVIRONMENT=Development`.)
 
 Environment variables win over user secrets. That is what lets you point a run at the stub
 without disturbing whatever real token you may already have stored: export
@@ -54,7 +53,31 @@ host port 58080). The database and credentials above belong to the test suite; t
 below points the worker at a different, throwaway database on the same server instead of
 touching `assistant_test`.
 
-### 2. Run the worker against the stub
+### 2. Give the worker a connection string
+
+`DatabaseSettings__ConnectionString` has to come from somewhere — the worker will not start
+without one. The standing local setup is `src/Assistant.Worker/appsettings.Development.json`,
+which is gitignored so it never reaches the public repository:
+
+```json
+{
+  "DatabaseSettings": {
+    "ConnectionString": "Host=localhost;Port=55432;Database=assistant;Username=assistant;Password=assistant"
+  }
+}
+```
+
+A fresh clone has no connection string at all — `DatabaseSettings.Validate()` throws
+`ConfigurationErrorsException` when it is missing — so creating this file is a required
+first-run step, not an optional convenience.
+
+The stub run below still passes an inline `DatabaseSettings__ConnectionString=...` override on
+the command line, and that is what redirects it to the throwaway `assistant_e2e` database
+instead of the `assistant` database named above. Environment variables beat the settings file,
+so both mechanisms coexist here: the file supplies a working default, and the override wins for
+this run.
+
+### 3. Run the worker against the stub
 
 ```bash
 DatabaseSettings__ConnectionString="Host=localhost;Port=55432;Database=assistant_e2e;Username=assistant;Password=assistant" \
@@ -91,7 +114,7 @@ migrates.
 
 Leave the worker running in this terminal for the rest of the walkthrough.
 
-### 3. Seed a due reminder
+### 4. Seed a due reminder
 
 In another terminal, insert a row directly. Reaching `psql` through the container avoids
 installing anything locally:
@@ -111,7 +134,7 @@ Keep hand-seeded titles plain text. The notifier sends with `ParseMode.Html`, an
 escaping is not implemented until F7 — a title containing `<` or `&` will be rejected by
 Telegram with a 400.
 
-### 4. Watch the stub
+### 5. Watch the stub
 
 The scheduler ticks every 30 seconds. Give it up to about 30 seconds before concluding
 anything is wrong — in the verified run, the message reached the stub 19 seconds after the
@@ -129,10 +152,10 @@ BODY: {"chat_id":<your-chat-id>,"text":"Call the bank","parse_mode":"Html"}
 ```
 
 Note that `text` is the bare task title, with no prefix — that is the behaviour conventions
-12.6 settled: the message arrives from the assistant, in a chat only the assistant writes to,
+§12.6 settled: the message arrives from the assistant, in a chat only the assistant writes to,
 so there is nothing for a prefix to disambiguate.
 
-### 5. Check the row in the database
+### 6. Check the row in the database
 
 ```bash
 docker compose -f compose.test.yaml exec -T postgres-test \
@@ -142,7 +165,7 @@ docker compose -f compose.test.yaml exec -T postgres-test \
 
 `reminder_sent_at` should now be populated — it is set after delivery, not at seed time.
 
-### 6. Confirm the reminder does not fire twice
+### 7. Confirm the reminder does not fire twice
 
 This is the single most valuable check in the walkthrough. Wait another 45 seconds — one and
 a half tick intervals — and count the stub's requests again:
@@ -154,7 +177,7 @@ curl -s http://localhost:58080/__admin/requests
 The count should stay at exactly one. That proves the row was marked sent rather than
 redelivered on every tick.
 
-### 7. Clean up
+### 8. Clean up
 
 Stop the worker with Ctrl+C in its terminal, then drop the throwaway database and reset the
 stub:
@@ -198,16 +221,16 @@ dotnet run --project src/Assistant.Worker -- send-test-message
 It sends "Assistant is configured and can reach you." to the owner chat. Run this first: it
 separates "my token is wrong" from "my scheduler is wrong" before you invest in seeding a row.
 
-From there, the full run is the same as the stub walkthrough minus the `BaseUrl` override,
-pointed at a real database:
+From there, the full run is a plain `dotnet run --project src/Assistant.Worker` with no
+environment variables at all — which is exactly what the owner ran. `appsettings.Development.json`
+supplies the database and user secrets supply the token, so nothing needs exporting:
 
 ```bash
-DatabaseSettings__ConnectionString="Host=localhost;Port=<port>;Database=<db>;Username=<user>;Password=<password>" \
 dotnet run --project src/Assistant.Worker
 ```
 
-Seed a due row the same way as step 3 above, wait up to 30 seconds, and the reminder arrives
-on your phone instead of in the stub's request log. The at-most-once check in step 6 applies
+Seed a due row the same way as step 4 above, wait up to 30 seconds, and the reminder arrives
+on your phone instead of in the stub's request log. The at-most-once check in step 7 applies
 here too — it is worth doing once against real Telegram, not only against the stub.
 
 ## Troubleshooting
@@ -227,3 +250,11 @@ the 30-second tick window before assuming something is broken.
 **A seeded title with `<` or `&` gets a 400 from Telegram (or from the stub).** Expected —
 HTML escaping is not implemented until F7. Keep hand-seeded titles plain text; this is not a
 bug in the scheduler.
+
+**`ConfigurationErrorsException: TelegramSettings.OwnerChatId is missing or zero.`** The owner
+chat id is unset or was left as a placeholder. Set it with
+`dotnet user-secrets set "TelegramSettings:OwnerChatId" "<your-chat-id>" --project src/Assistant.Worker`.
+
+**`ConfigurationErrorsException: DatabaseSettings.ConnectionString is missing or empty.`** No
+connection string is configured — see "Give the worker a connection string" above and create
+`src/Assistant.Worker/appsettings.Development.json`.

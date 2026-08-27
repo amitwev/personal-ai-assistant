@@ -36,9 +36,13 @@ DatabaseSettings__ConnectionString="Host=localhost;Port=<port>;Database=<db>;Use
 dotnet run --project src/Assistant.Worker
 ```
 
-The Telegram bot token goes in user secrets, never in `appsettings.Development.json` (this
-repository is public); user secrets only load in `Development`, so commands that need it require
+The Telegram bot token goes in user secrets, never in `appsettings.Development.json` (user
+secrets live outside the repository tree entirely, a stronger guarantee than a gitignore rule
+someone could override with `git add -f`); user secrets only load in `Development`, so commands
+that need it require
 `DOTNET_ENVIRONMENT=Development dotnet run --project src/Assistant.Worker -- send-test-message`.
+The local connection string goes in `appsettings.Development.json`; a fresh clone has none, and
+the worker will not start without one.
 
 For a full walkthrough — stub and real Telegram, seeding a due reminder, and verifying it is
 delivered at most once — see `docs/e2e-local.md`.
