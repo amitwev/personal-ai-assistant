@@ -101,10 +101,11 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
     /// <remarks>
     /// The only test in this suite that waits on wall-clock time, and it is worth the
     /// cost: a listener that fails to advance its offset is served the same update on
-    /// every poll, and the stub answers an unadvanced poll with no delay at all. The
-    /// failure is therefore hundreds of replies inside the settle window, not two, so
-    /// this cannot fail marginally. A false pass would need the machine to make no
-    /// progress for the whole window.
+    /// every poll, and the stub answers an unadvanced poll with no delay at all.
+    /// Breaking the offset advance to confirm this test could fail measured 3704
+    /// replies inside the 3-second settle window, not two, so this cannot fail
+    /// marginally. A false pass would need the machine to make no progress for the
+    /// whole window.
     /// </remarks>
     [Fact]
     public async Task Listener_MessageAlreadyAnswered_DoesNotAnswerItAgain()
