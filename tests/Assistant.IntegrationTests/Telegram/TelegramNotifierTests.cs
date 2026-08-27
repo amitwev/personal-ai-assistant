@@ -10,7 +10,7 @@ namespace Assistant.IntegrationTests.Telegram;
 /// Test class for <see cref="INotifier"/>.
 /// </summary>
 /// <param name="wireMock">The shared stub API fixture.</param>
-[Collection(WireMockCollection.Name)]
+[Collection(IntegrationCollection.Name)]
 public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLifetime
 {
     private const string BotToken = "123456:TESTTOKEN";

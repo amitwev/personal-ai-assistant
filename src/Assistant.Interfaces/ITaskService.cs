@@ -1,4 +1,5 @@
 using Assistant.Contracts;
+using Assistant.Models;
 
 namespace Assistant.Interfaces;
 
@@ -22,4 +23,16 @@ public interface ITaskService
     /// the task has no due time and therefore had no reminder to deliver.
     /// </returns>
     Task<Result> MarkReminderSentAsync(Guid id, CancellationToken ct);
+
+    /// <summary>
+    /// Returns pending tasks that are due and whose reminder has not yet been delivered.
+    /// </summary>
+    /// <param name="limit">Maximum number of tasks to return.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// Tasks ordered by due time, oldest first. The service decides what "now" means: callers
+    /// never pass an instant, so a job's notion of due time cannot drift from the rest of the
+    /// assistant's.
+    /// </returns>
+    Task<IReadOnlyList<ReminderTask>> GetDueRemindersAsync(int limit, CancellationToken ct);
 }

@@ -10,7 +10,7 @@ namespace Assistant.IntegrationTests.Services;
 /// Test class for <see cref="ITaskService"/>.
 /// </summary>
 /// <param name="postgres">The shared database fixture.</param>
-[Collection(PostgresCollection.Name)]
+[Collection(IntegrationCollection.Name)]
 public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
 {
     private const int NoLimit = 100;

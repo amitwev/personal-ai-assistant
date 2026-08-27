@@ -26,7 +26,7 @@ implementation or a real extension point does.
 
 **Definition of done.** A feature is done when: it builds with zero warnings, its tests pass,
 every new public member has a three-line `<summary>`, and no code was added that nothing
-exercises. Features marked **▶ observable** must also be demonstrable on a real phone.
+exercises. Features marked **observable** must also be demonstrable on a real phone.
 
 **Size budget.** No pull request exceeds **1000 changed lines**, and smaller is better. Where a
 feature would breach that, it is split along a line that leaves both halves independently
@@ -158,9 +158,10 @@ A WireMock stub for the Telegram API in Docker Compose, and the automated test F
   `Assistant.ApiStubs`, survives swapping the tool and reads better once F9 and F13 add stubs to
   the same service — but renaming it now, before anything depends on it, is cheap, and renaming it
   once three features depend on it would not be.
-- **`WireMockCollection` is separate from `PostgresCollection` for now.** These tests need the
-  stub and no database. A test class can belong to only one xUnit collection, so F5b — the first
-  feature that needs a database and a stub together — merges the two definitions into one.
+- **`WireMockCollection` was separate from `PostgresCollection` at first.** These tests needed
+  the stub and no database. A test class can belong to only one xUnit collection, so F5b — the
+  first feature needing a database and a stub together — merged the two definitions into
+  `IntegrationCollection`.
 - **The payload is asserted whole**, with `Assert.Equivalent(expected, actual, strict: true)`:
   count, recipient, exact text, and parse mode in one assertion. A deliberate consequence: when F6
   adds an inline keyboard, `reply_markup` appears in the body and `strict` fails this test until F6
@@ -186,7 +187,8 @@ due time, covering the public surface rather than the scheduler's route through 
   milestone.
 - **`IClock` landed in F5a, not F5b.** Spec §4.2 requires `UpdatedAt` stamped on every mutation,
   and doing that from `DateTimeOffset.UtcNow` inside `TaskService` would make the rule untestable
-  in the one class §4.2 says must be directly testable.
+  in the one class §4.2 says must be directly testable. Replaced by the BCL's `TimeProvider` at
+  F5b, below — `IClock` no longer exists in the codebase.
 - **`Result` and `ErrorCode` were designed here because the spec never defines them.** §4.2 lists
   methods returning `Task<Result>` and stops. `Error` is nullable rather than an
   `Unknown`-means-success sentinel, since every enum in this project reserves its first member for
@@ -205,23 +207,71 @@ due time, covering the public surface rather than the scheduler's route through 
   scope hits an EF identity conflict. No current call site does; F10 is the first that plausibly
   could.
 
-**F5b · The scheduler fires due reminders ▶ observable** — spec §6.1, §6.2
+**F5b · The scheduler fires due reminders · observable** — spec §6.1, §6.2 · **done**
 `IScheduledJob`, `ScheduledJobBase` (re-entrancy guard + try/catch), `ReminderScheduler` on a 30s
 `PeriodicTimer`, and `DueReminderJob`, calling `ITaskService.MarkReminderSentAsync` from F5a. Send
 **then** mark — at-least-once is deliberate.
-*Tests:* a due task produces exactly one message; a second tick produces none; a process
-restarted after the due time still delivers.
-*Still owed from F5a:* there is no `xunit.runner.json` and no `[assembly: CollectionBehavior]`, so
-xUnit's default parallelism runs distinct collections concurrently, and `PostgresFixture.ResetAsync`
-truncates every table. So every class touching Postgres must live in the one merged
-`PostgresCollection`/`WireMockCollection`, or one collection's reset will truncate another's rows
-mid-test — which presents as a flaky database, not as a test-isolation bug. This is the first
-feature needing both a database and a stub, and it also owes the architecture test forbidding a job
-from touching a repository directly. Neither could be built at F5a: no job existed yet, so the
-architecture test would have passed over zero types.
-**Milestone: the product works.** Seed a row, watch your phone.
+*Tests:* a due task produces exactly one message; a second tick produces none; a process restarted
+after the due time still delivers; a delivery failure leaves the task still due.
+*Settled at F5b:*
+- **`TimeProvider` replaced `IClock`.** F5a had shipped a hand-rolled `IClock`/`SystemClock`
+  three days earlier. F5b deleted both in favour of the BCL's `TimeProvider`, because
+  `PeriodicTimer` accepts one directly and `FakeTimeProvider` drives a fake clock through the
+  timer, which a custom interface cannot do. Worth modifying working code because the alternative
+  was two clock abstractions in one codebase.
+- **`ITaskService.GetDueRemindersAsync(limit, ct)` takes no instant.** The service decides what
+  "now" means, so a job's notion of due time cannot drift from the rest of the assistant's. It has
+  no test of its own: it is a branchless pass-through and F3's query tests already pin which rows
+  come back.
+- **Send, then mark — and it is now pinned by a test.** Reversing the two lines to mark-then-send
+  passed all twenty-two integration tests, so the feature's most consequential decision was
+  resting on source order alone. A fourth job test points the notifier at a dead port so delivery
+  throws, then asserts the task is *still due*. Under mark-then-send it is not, and the reminder is
+  gone.
+- **Jobs are singletons and open their own scope.** `ReminderScheduler` is a `BackgroundService`,
+  so it is a singleton, and `ITaskService` is scoped. Resolving jobs from a per-tick scope would
+  fix the injection error but silently break the re-entrancy guard, because a per-instance flag on
+  a per-tick object guards nothing. `DueReminderJob` takes `IServiceScopeFactory` instead.
+- **The re-entrancy guard is tested on `ScheduledJobBase` directly.** The scheduler awaits jobs
+  sequentially, so it cannot produce an overlapping call; a test driving the guard through the
+  loop would pass whether or not the guard existed. It is tested by calling `RunAsync` twice
+  concurrently on the base class, where the contract actually lives.
+- **`AddAssistantScheduler` is the public seam.** `Assistant.IntegrationTests` reaches
+  `Assistant.Impl` only transitively, so a test cannot name the internal `DueReminderJob`.
+  Registering through the extension means the job test exercises the real DI wiring.
+- **The two xUnit collections merged.** There is no `xunit.runner.json` and no
+  `[assembly: CollectionBehavior]`, so xUnit's default parallelism runs distinct collections
+  concurrently, and `PostgresFixture.ResetAsync` truncates every table — a second Postgres-touching
+  collection running in parallel would truncate this one's rows mid-test, which presents as a
+  flaky database, not as a test-isolation bug. F5b is the first feature needing a database and a
+  stub together, so `PostgresCollection` and `WireMockCollection` became one
+  `IntegrationCollection`.
+- **The architecture rule barring jobs from repositories predates F5b, and only now guards
+  anything.** `DependencyRuleTests.Only_TaskService_references_ITaskRepository_in_Impl` shipped
+  before F5b existed, so F5b does not owe it. Until `DueReminderJob` was the first job type in
+  `Assistant.Impl`, the test scanned zero job types and could not have failed no matter what a job
+  did. It now has something to guard, and passes because `DueReminderJob` reaches `ITaskService`,
+  never `ITaskRepository`.
+- **The Worker applies migrations explicitly.** `MigrateAssistantDatabaseAsync` had existed since
+  F2 with no caller anywhere in the repository, and `AGENTS.md` wrongly claimed
+  `AddAssistantRepository` migrated automatically. F5b is the first feature where the Worker needs
+  a database, so it became that method's first caller. A new `DatabaseSettings` reads the
+  connection string through the project's existing `IConfiguration.Read<T>()` fail-fast path.
+- **HTML-escaping debt, owed by F7.** `TelegramNotifier` sends with `ParseMode.Html`, so a title
+  containing `<` or `&` will be rejected by Telegram with a 400. Unreachable at F5b — the only way
+  a task exists is a hand-written SQL insert — but F7 is the first feature where a person can type
+  a title, and F7 owes the escaping.
+- **The reminder message lost its clock-emoji prefix on review.** `DueReminderJob` sent the title
+  behind a pictogram; the repository's owner asked for it gone, and the delivered message is now
+  the task title alone. The same review settled a repository-wide rule barring emoji outright
+  (conventions §12.6): not in source, tests, documentation, commit messages, or bot message text.
+**Milestone: the product works.** Verified against a local Postgres with Telegram pointed at the
+WireMock stub: a row seeded two hours overdue, and the stub received exactly one `sendMessage`
+carrying the task's title within the tick interval; the row was marked sent and no later tick
+redelivered it. The same check against the real Telegram API is still owed by the repository's
+owner, since it needs their bot token.
 
-**F6 · Complete a task from a button ▶ observable** — spec §6.4
+**F6 · Complete a task from a button · observable** — spec §6.4
 `ITaskAction` + `DoneAction`, `ICallbackHandler` + `CallbackRouter`, the `v1:<action>:<id>`
 callback codec, in-place message edit, and `ITaskService.CompleteAsync`. `ReminderTask` regains
 `CompletedAt`, which also brings back the `ck_completed_consistency` check constraint.
@@ -247,7 +297,7 @@ ambiguity.
 (`Result` and `ErrorCode` arrived at F5a).
 *Tests:* free text produces the expected tool call against a WireMock'd provider.
 
-**F10 · Store the parsed task and reply ▶ observable** — spec §5.1
+**F10 · Store the parsed task and reply · observable** — spec §5.1
 `ITaskService.CreateAsync`, the mapping extension methods, and the reply rendered with its
 inline keyboard. `ReminderTask` regains `Notes`, which the capture path is first to write.
 *Tests:* "call the bank tomorrow at 10" ends as a row with the right UTC instant and a reply
@@ -262,7 +312,7 @@ carrying the right buttons.
 single writer. `ReminderTask` regains `DeliveryAttempts`; the retry cap enters the due query here.
 *Tests:* snooze 1h fires at exactly +1h, not immediately; the sent marker is cleared.
 
-**F12 · Daily brief ▶ observable** — spec §6.3
+**F12 · Daily brief · observable** — spec §6.3
 `DailyBriefLog` + `daily_brief_log` (its primary key is the once-per-day check),
 `IDailyBriefRepository.TryClaimAsync`, `DailyBriefJob` at 07:00 local, no cutoff.
 `ReminderTask` regains `Priority` — the brief is the first thing that orders by it (spec §3.3).
@@ -282,6 +332,16 @@ told. `ChatMessage` + `chat_messages` arrive here for the conversation window.
 — already exists and is already exercised by `TelegramSettings`. F14 inherits only
 `appsettings.{Environment}.json` and validation for the settings types slice 1 still needs, not
 the mechanism itself.
+
+**Container packaging for the worker** — spec §8, §11.6 · **unscheduled**
+There is no `compose.yaml` and no worker `Dockerfile` in this repository, and there never has
+been — only `compose.test.yaml`, which serves the test suite. F5b needed the Worker to run
+against a real database for the first time, and in doing so found `AGENTS.md` documenting a
+`docker compose up -d` workflow that had never worked; F5b corrected that text to describe what
+actually exists today. The work itself remains undone: an image build, secret delivery, and a
+restart policy. F14 already lists `Dockerfile` and `compose.yaml` among its contents, so this is
+not a competing feature number — it is a flag that the gap F5b found is real and directly
+observed, not merely anticipated, and worth tracking on its own until F14 is planned.
 
 ---
 

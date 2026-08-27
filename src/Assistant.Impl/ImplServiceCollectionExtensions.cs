@@ -1,7 +1,8 @@
+using Assistant.Impl.Scheduling;
 using Assistant.Impl.Services;
+using Assistant.Impl.Services.Jobs;
 using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
-using Assistant.Impl.Time;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Telegram.Bot;
@@ -41,8 +42,20 @@ public static class ImplServiceCollectionExtensions
     /// <returns>The same <paramref name="services"/>, for chaining.</returns>
     public static IServiceCollection AddAssistantServices(this IServiceCollection services)
     {
-        services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton(TimeProvider.System);
         services.AddScoped<ITaskService, TaskService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the scheduler loop and every job it runs.
+    /// </summary>
+    /// <param name="services">The container to add registrations to.</param>
+    /// <returns>The same <paramref name="services"/>, for chaining.</returns>
+    public static IServiceCollection AddAssistantScheduler(this IServiceCollection services)
+    {
+        services.AddSingleton<IScheduledJob, DueReminderJob>();
+        services.AddHostedService<ReminderScheduler>();
         return services;
     }
 }

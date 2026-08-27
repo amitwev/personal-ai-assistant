@@ -15,7 +15,7 @@ namespace Assistant.IntegrationTests.Repositories;
 /// microseconds and truncates below that, so a one-tick difference is not a difference at all
 /// once the row is written.
 /// </remarks>
-[Collection(PostgresCollection.Name)]
+[Collection(IntegrationCollection.Name)]
 public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLifetime
 {
     private const int TicksPerMicrosecond = 10;

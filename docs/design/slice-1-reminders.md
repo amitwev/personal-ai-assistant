@@ -56,7 +56,7 @@ This inverts the roadmap in the original spec, where proactive reminders were Ph
 | Hosting | Cheap VPS (Hetzner/DO), Docker Compose | Proactive push requires genuine 24/7 uptime |
 | Host type | Worker Service (Generic Host), no web server | No inbound HTTP in slice 1 |
 | Telegram transport | Long polling | No public domain, cert, or open port; self-reconnecting |
-| Timezone | `Asia/Jerusalem`, fixed for slice 1 | YAGNI. Configurable zones are a later slice (§12.6) |
+| Timezone | `Asia/Jerusalem`, fixed for slice 1 | YAGNI. Configurable zones are a later slice (§12.7) |
 | HTTP clients | Refit for every HTTP API this project calls itself | Typed interfaces, declarative, WireMock-friendly (§12.3) |
 | Documentation | XML doc comments on every public member, enforced by the build | §12.1 |
 | Mapping | Extension methods only | §12.2 |
@@ -100,7 +100,7 @@ Models      →  (nothing)
 Contracts   →  (nothing — BCL only)
 Interfaces  →  Models, Contracts
 Repository  →  Interfaces, Models
-Impl        →  Interfaces, Contracts, Models        ✗ never Repository
+Impl        →  Interfaces, Contracts, Models        never Repository
 Worker      →  everything
 UnitTests   →  Impl, Interfaces, Contracts, Models
 IntegrationTests → Worker (boots the real host)
@@ -138,7 +138,7 @@ Consequence for design: repository methods are named by intent (`GetDueReminders
 | :--- | :--- |
 | `Models` | `ReminderTask`, `ChatMessage`, `DailyBriefLog`, `ReminderStatus`, `Priority` — plain POCOs |
 | `Contracts` | `CreateTaskRequest`, `UpdateTaskRequest`, `ListTasksRequest`, `TaskResponse`, `TaskListResponse`, `ReminderNotification`, `TaskFilter`; `Result`/`Error` types |
-| `Interfaces` | `ITaskService`, `IMessageHandler`, `ITaskRepository`, `IChatMessageRepository`, `IDailyBriefRepository`, `INotifier`, `IClock`, `IAssistantTool`, `IScheduledJob`, `ITaskAction`, `IChatClient` wrapper |
+| `Interfaces` | `ITaskService`, `IMessageHandler`, `ITaskRepository`, `IChatMessageRepository`, `IDailyBriefRepository`, `INotifier`, `IAssistantTool`, `IScheduledJob`, `ITaskAction`, `IChatClient` wrapper |
 | `Repository` | `AppDbContext`, EF configurations, migrations, `EfTaskRepository` and siblings, `AddAssistantRepository` |
 | `Impl` | Everything else implemented — see the folder layout below |
 | `Worker` | `Program.cs`, DI registration, options binding, hosted-service registration |
@@ -157,7 +157,7 @@ Assistant.Impl/
 ├─ Telegram/       TelegramListener, TelegramNotifier, CallbackRouter
 ├─ Ai/             IAnthropicApi, IOpenRouterApi (Refit), the IChatClient adapters,
 │                  FallbackChatClient
-└─ Scheduling/     ReminderScheduler, ScheduledJobBase, HeartbeatWriter, SystemClock
+└─ Scheduling/     ReminderScheduler, ScheduledJobBase, HeartbeatWriter
 ```
 
 ### 3.5 Process topology
@@ -180,7 +180,7 @@ Each interface is a point where behaviour is added by writing a new class, never
 | `IAssistantTool` | `CreateTask`, `ListTasks`, `UpdateTask`, `CompleteTask` | New capability → new class, auto-registered |
 | `IScheduledJob` | `DueReminderJob`, `DailyBriefJob` | New recurring job → new class; scheduler untouched |
 | `INotifier` | `TelegramNotifier` | Additional channel without touching job logic |
-| `IClock` | `SystemClock`, `FakeClock` | Makes every time-based rule testable |
+| `TimeProvider` | `TimeProvider.System`, `FakeTimeProvider` | Makes every time-based rule testable |
 | `IChatClient` | `AnthropicChatClient`, `OpenRouterChatClient`, `FallbackChatClient` | Provider change is configuration |
 
 `ReminderScheduler` injects `IEnumerable<IScheduledJob>` and knows nothing about the jobs it runs. Adding a third job requires no change to the scheduler.
@@ -330,7 +330,7 @@ The current local time is injected on every call:
 
 Without this the model has no basis for resolving "tomorrow" and will guess.
 
-**Jerusalem is fixed in slice 1**, in the prompt and in `LocalTimeResolver`. This is a deliberate YAGNI call: making the zone configurable is a small change (§12.6) and there is no second user waiting for it. The README states the limitation plainly rather than implying multi-zone support that does not exist.
+**Jerusalem is fixed in slice 1**, in the prompt and in `LocalTimeResolver`. This is a deliberate YAGNI call: making the zone configurable is a small change (§12.7) and there is no second user waiting for it. The README states the limitation plainly rather than implying multi-zone support that does not exist.
 
 ### 5.3 Tools
 
@@ -374,7 +374,7 @@ A per-minute cap on LLM calls bounds cost if anything loops.
 
 ### 6.1 Scheduler
 
-A `PeriodicTimer` on a 30-second tick, injected with `IEnumerable<IScheduledJob>`. `ScheduledJobBase` holds a re-entrancy guard so a slow job cannot overlap itself, and every job runs inside try/catch: a throwing job must never terminate the loop or the host. Each successful tick touches the heartbeat file used by the container healthcheck (§8).
+A `PeriodicTimer` on a 30-second tick, injected with `IEnumerable<IScheduledJob>`. `ScheduledJobBase` holds a re-entrancy guard so a slow job cannot overlap itself, and every job runs inside try/catch: a throwing job must never terminate the loop or the host. Each successful tick touches the heartbeat file used by the container healthcheck (§8). **Deferred:** F5b shipped the scheduler without this. There is no heartbeat file and no container healthcheck yet — §8 describes the intent for when a container exists, not current behaviour.
 
 ### 6.2 `DueReminderJob`
 
@@ -387,9 +387,9 @@ ORDER BY due_at
 LIMIT @limit;
 ```
 
-There is deliberately no lower bound on `due_at` — that is what makes restart catch-up automatic. Because a long outage would otherwise produce a burst of individual messages, anything overdue by more than 24 hours is collapsed into a single summary message.
+There is deliberately no lower bound on `due_at` — that is what makes restart catch-up automatic. Because a long outage would otherwise produce a burst of individual messages, anything overdue by more than 24 hours is collapsed into a single summary message. **Deferred:** not built at F5b, which sends one message per overdue task no matter how overdue it is. §7.4's "overdue by 3 days across 5 tasks → one summary message, not five" scenario belongs to this collapse and is therefore deferred with it; F5b's third job test deliberately arranges one overdue task, not five, so it asserts nothing that the deferred behaviour would later contradict.
 
-**Delivery ordering: send, then mark.** The reverse (mark, then send) loses a reminder when the send fails after the write. At-least-once is the correct trade for this product. `delivery_attempts` caps retries at 3 so a persistent failure cannot loop indefinitely.
+**Delivery ordering: send, then mark.** The reverse (mark, then send) loses a reminder when the send fails after the write. At-least-once is the correct trade for this product. `delivery_attempts` caps retries at 3 so a persistent failure cannot loop indefinitely. **Deferred:** there is no `delivery_attempts` column yet and no retry cap — a persistent failure today retries forever, once per tick, rather than giving up after three.
 
 ### 6.3 `DailyBriefJob`
 
@@ -438,7 +438,7 @@ Testability is a day-one requirement, and the driver behind the reference rules 
 
 ### 7.1 Default level: full-stack in Docker
 
-`Assistant.IntegrationTests` exercises the real host and DI container, a real PostgreSQL, and WireMock.NET standing in for the Telegram and LLM HTTP APIs. `FakeClock` replaces `SystemClock`.
+`Assistant.IntegrationTests` exercises the real host and DI container, a real PostgreSQL, and WireMock.NET standing in for the Telegram and LLM HTTP APIs. `FakeTimeProvider` replaces `TimeProvider.System`.
 
 **Postgres comes from Docker Compose, not Testcontainers.** `compose.test.yaml` at the repository root defines a Postgres service on a fixed port with a healthcheck. It is brought up once — by the developer locally, or by a CI step before `dotnet test` — and the suite connects to it.
 
@@ -482,7 +482,7 @@ sent.Should().HaveCount(1);                        // exactly one, not "at least
 
 var body = SendMessagePayload.Parse(sent.Single());
 body.ChatId.Should().Be(KnownChatId);
-body.Text.Should().Be("⏰ Call the bank");          // exact string, not Contains
+body.Text.Should().Be("Call the bank");             // exact string, not Contains
 body.Buttons().Should().Equal("Done", "Snooze 1h", "Tomorrow", "Edit");
 
 task.DueAt.Should().Be(DateTimeOffset.Parse("2026-08-17T07:00:00Z"));
@@ -827,10 +827,37 @@ Two consequences worth knowing before you hit them:
 
 **This rule is not build-enforced, and that is deliberate.** The compiler emits an ordinary
 constructor either way, so no reflection test can tell the two apart. The analyzer that can
-(`IDE0290`) needs `.editorconfig`, which this project does not use (§12.6). It is a review rule,
+(`IDE0290`) needs `.editorconfig`, which this project does not use (§12.7). It is a review rule,
 checked by reading.
 
-### 12.6 Deferred conventions
+### 12.6 No emoji
+
+**No file in this repository contains an emoji.** Not source, not tests, not documentation, not
+commit messages, and not the text the bot sends. A friendly tone is not an exception clause;
+nothing here needs decoration to read as approachable, and the rule does not bend for a message
+that only the assistant will ever read.
+
+The case against them is concrete, not aesthetic. Emoji render at inconsistent widths across
+fonts and terminals, and this project's documents are full of ASCII diagrams and reference
+tables — §3.2, the directory tree in §11.1 — whose alignment depends on every character being
+one column wide; a pictogram silently breaks that for whoever's renderer disagrees with the
+author's. In a diff, an emoji is one opaque glyph: `git diff` shows that the line changed, not
+what changed, and a reviewer cannot tell which pictogram replaced which without opening a
+codepoint table. They are not greppable without already knowing the codepoint — you cannot
+search a codebase for a character you cannot type. And inside a message body an emoji is one
+more character that has to survive `ParseMode.Html` escaping intact, on top of the escaping debt
+the feature backlog already owes to F7 — one more way for a reminder to fail for a reason that
+has nothing to do with what it says. None of that buys anything a word would not.
+
+So: use the word, or use nothing. The due-reminder message is the task title alone, with no
+prefix — it arrives from the assistant, in a chat only the assistant writes to, so there is no
+reader for a pictogram to orient and nothing left for it to disambiguate.
+
+**This rule is not build-enforced, and that is deliberate — the same way §12.5 is honest about
+`IDE0290`.** Catching it would need a Unicode-range scan wired into CI, and nothing here runs
+one. It is a review rule, checked by reading.
+
+### 12.7 Deferred conventions
 
 | Item | Trigger |
 | :--- | :--- |

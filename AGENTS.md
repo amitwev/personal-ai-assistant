@@ -27,14 +27,25 @@ docker compose -f compose.test.yaml down -v     # when finished
 
 ### Run locally
 
+Container packaging for the worker (image build, secret delivery, restart policy) is not
+yet in this repository — there is no `compose.yaml` and no worker Dockerfile, only
+`compose.test.yaml`, which serves the test suite. To run locally: start a Postgres, then
+
 ```bash
-docker compose up -d          # Postgres + worker; migrations apply on startup
-docker compose logs -f worker
+DatabaseSettings__ConnectionString="Host=localhost;Port=<port>;Database=<db>;Username=<user>;Password=<password>" \
+dotnet run --project src/Assistant.Worker
 ```
 
-The Telegram bot token goes in user secrets, never in `appsettings.Development.json` (this
-repository is public); user secrets only load in `Development`, so commands that need it require
+The Telegram bot token goes in user secrets, never in `appsettings.Development.json` (user
+secrets live outside the repository tree entirely, a stronger guarantee than a gitignore rule
+someone could override with `git add -f`); user secrets only load in `Development`, so commands
+that need it require
 `DOTNET_ENVIRONMENT=Development dotnet run --project src/Assistant.Worker -- send-test-message`.
+The local connection string goes in `appsettings.Development.json`; a fresh clone has none, and
+the worker will not start without one.
+
+For a full walkthrough — stub and real Telegram, seeding a due reminder, and verifying it is
+delivered at most once — see `docs/e2e-local.md`.
 
 ### Database migrations
 
@@ -43,7 +54,8 @@ dotnet ef migrations add <Name> \
   --project src/Assistant.Repository \
   --startup-project src/Assistant.Worker
 ```
-Migrations are applied automatically at startup by `AddAssistantRepository`.
+The Worker applies them at startup by calling `MigrateAssistantDatabaseAsync` explicitly;
+`AddAssistantRepository` itself never migrates.
 
 ## Project map
 
@@ -66,7 +78,7 @@ right and your change is the thing that is wrong.
 See `docs/conventions.md`. In short: XML docs on every public member
 (missing ones fail the build), every class with arguments uses a primary
 constructor, mapping is extension methods named by destination, HTTP
-clients are Refit interfaces.
+clients are Refit interfaces, and no emoji anywhere in the repository.
 
 ## Do not
 
@@ -80,6 +92,8 @@ clients are Refit interfaces.
 - Name a type `Task` or an enum `TaskStatus`.
 - Declare a separate constructor. Use a primary constructor.
 - Mark a reminder sent before it has actually been sent.
+- Put an emoji anywhere: source, tests, docs, commit messages, or bot
+  message text. Use a word.
 
 ## Design
 
