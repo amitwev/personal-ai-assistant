@@ -130,9 +130,9 @@ docker compose -f compose.test.yaml exec -T postgres-test \
 `ck_reminder_tasks_status_known` check constraint. `due_at` an hour in the past means the row
 is already due the moment the scheduler looks at it.
 
-Keep hand-seeded titles plain text. The notifier sends with `ParseMode.Html`, and HTML
-escaping is not implemented until F7 — a title containing `<` or `&` will be rejected by
-Telegram with a 400.
+The notifier sends with `ParseMode.Html` and escapes `&`, `<` and `>` before sending, so a
+hand-seeded title containing those characters is delivered as literal text rather than
+rejected — no need to keep hand-seeded titles plain.
 
 ### 5. Watch the stub
 
@@ -247,9 +247,9 @@ a past `due_at`; a row with `status = 0` is rejected outright by the check const
 never gets inserted. If the worker is running and the row looks right, give it the rest of
 the 30-second tick window before assuming something is broken.
 
-**A seeded title with `<` or `&` gets a 400 from Telegram (or from the stub).** Expected —
-HTML escaping is not implemented until F7. Keep hand-seeded titles plain text; this is not a
-bug in the scheduler.
+**A seeded title with `<` or `&` gets a 400 from Telegram (or from the stub).** Should not
+happen — `TelegramNotifier` escapes `&`, `<` and `>` before every send (F7). If you see this,
+the escaping regressed; it is not expected behaviour in the scheduler.
 
 **`ConfigurationErrorsException: TelegramSettings.OwnerChatId is missing or zero.`** The owner
 chat id is unset or was left as a placeholder. Set it with

@@ -357,6 +357,28 @@ polling.
   The break that actually exercises the test is making the comparison false at runtime instead of
   removing it. Worth recording on its own: the failure mode was in the break instruction, not in
   the code it was checking.
+- **The HTML-escaping debt F5b flagged as owed by F7 is discharged.** `TelegramNotifier` now
+  escapes `&`, `<` and `>` before every send. Of the two consequences the debt carried, the
+  reminder path was the more severe and had been live on `main` since F5b: `DueReminderJob` sends
+  `task.Title` and then calls `MarkReminderSentAsync`, so a title containing `<` or `&` made the
+  send throw, the mark never ran, and the `foreach` over the batch aborted — that task retried
+  every 30 seconds forever, and every reminder behind it in the same batch was blocked with it.
+  F7's own echo carried the milder version: typing `5 < 6` to the bot produced a 400 and silence.
+  Escaping lives in `TelegramNotifier`, not at its call sites, because it is the only type that
+  knows it is sending HTML — today one hundred percent of what it sends is plain text and nothing
+  sends markup, so a text-versus-markup distinction would be an abstraction with one case, which
+  the backlog's own YAGNI rule forbids. F10 is the first feature that renders markup, and it earns
+  that distinction then. The three replacements are hand-rolled (`Replace("&","&amp;")` before
+  `Replace("<","&lt;")` before `Replace(">","&gt;")`) rather than delegated to a general-purpose
+  encoder: `&` must run first because reversing it makes `<` become `&lt;` and then the `&` that
+  replacement just introduced gets re-escaped into `&amp;lt;`, rendering as literal text instead
+  of a bracket. `WebUtility.HtmlEncode` was tried and rejected on suspicion it would numeric-encode
+  non-ASCII text; verified directly on .NET 10, it turns out to reach only the Latin-1 Supplement
+  range and characters outside the Basic Multilingual Plane — it leaves Hebrew alone but still
+  turns "café" into "caf&amp;#233;" — while `System.Text.Encodings.Web.HtmlEncoder.Default`, an
+  equally reachable general-purpose choice, does numeric-encode this bot's Hebrew text
+  wholesale. Either is a trap a maintainer could reach for without noticing; hand-rolling three
+  fixed replacements is immune by construction, because it can only ever touch `&`, `<` and `>`.
 
 **F8 · Resolve local time** — spec §5.4
 `ILocalTimeResolver` + `LocalTimeResolver` over the configured IANA zone, and the guard clauses:
