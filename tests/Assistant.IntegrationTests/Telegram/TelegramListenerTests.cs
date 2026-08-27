@@ -65,4 +65,31 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
         var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
         Assert.Equal("call the bank", sent[0].Text);
     }
+
+    /// <summary>
+    /// When someone other than the owner sends a message
+    /// And the owner sends one in the same batch
+    /// Then only the owner is answered.
+    /// </summary>
+    /// <remarks>
+    /// The owner's message is a synchronisation device, not a second assertion. Proving
+    /// that nothing was sent to the stranger otherwise means waiting on a clock and
+    /// hoping; putting the stranger first in the batch means that by the time the owner's
+    /// reply arrives, the stranger's message has already been processed and skipped.
+    /// </remarks>
+    [Fact]
+    public async Task Listener_StrangerSendsAMessage_OnlyTheOwnerIsAnswered()
+    {
+        // Arrange
+        await wireMock.SeedUpdatesAsync(
+            new InboundUpdate(10, StrangerChatId, "let me in"),
+            new InboundUpdate(11, OwnerChatId, "call the bank"));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
+        Assert.Equal("call the bank", Assert.Single(sent).Text);
+    }
 }
