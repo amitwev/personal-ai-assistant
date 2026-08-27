@@ -140,15 +140,23 @@ The scheduler ticks every 30 seconds. Give it up to about 30 seconds before conc
 anything is wrong — in the verified run, the message reached the stub 19 seconds after the
 row was inserted.
 
+Since F7, the worker also runs `TelegramListener`
+(`src/Assistant.Impl/Telegram/TelegramListener.cs`), a `BackgroundService` that long-polls
+Telegram's `getUpdates` for as long as the worker is running. Against real Telegram that poll
+blocks for up to 30 seconds between requests, but the stub's default `getUpdates` mapping
+answers immediately after a fixed one-second delay, so a running worker adds a `getUpdates`
+entry to the stub's request log roughly once per second. The raw `__admin/requests` log is
+therefore mostly `getUpdates` polls, not the reminder — filter to `sendMessage`:
+
 ```bash
-curl -s http://localhost:58080/__admin/requests
+curl -s http://localhost:58080/__admin/requests \
+  | python3 -c "import json,sys; [print(e['Request']['Body']) for e in json.load(sys.stdin) if e['Request']['Path'].endswith('/sendMessage')]"
 ```
 
-You should see a request like this:
+You should see the request body printed on its own:
 
 ```
-URL : http://localhost:58080/bot111111:AAFakeTokenForLocalStubRunsOnly_xxxxx/sendMessage
-BODY: {"chat_id":<your-chat-id>,"text":"Call the bank","parse_mode":"Html"}
+{"chat_id":<your-chat-id>,"text":"Call the bank","parse_mode":"Html"}
 ```
 
 Note that `text` is the bare task title, with no prefix — that is the behaviour conventions
@@ -168,10 +176,12 @@ docker compose -f compose.test.yaml exec -T postgres-test \
 ### 7. Confirm the reminder does not fire twice
 
 This is the single most valuable check in the walkthrough. Wait another 45 seconds — one and
-a half tick intervals — and count the stub's requests again:
+a half tick intervals — and count the stub's `sendMessage` requests again, filtering out the
+`getUpdates` polling the same way as step 5:
 
 ```bash
-curl -s http://localhost:58080/__admin/requests
+curl -s http://localhost:58080/__admin/requests \
+  | python3 -c "import json,sys; print(sum(1 for e in json.load(sys.stdin) if e['Request']['Path'].endswith('/sendMessage')))"
 ```
 
 The count should stay at exactly one. That proves the row was marked sent rather than
