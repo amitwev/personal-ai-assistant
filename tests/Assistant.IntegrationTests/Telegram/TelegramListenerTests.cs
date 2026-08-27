@@ -92,4 +92,33 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
         var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
         Assert.Equal("call the bank", Assert.Single(sent).Text);
     }
+
+    /// <summary>
+    /// When a message has been answered
+    /// And the listener keeps polling
+    /// Then it is not answered again.
+    /// </summary>
+    /// <remarks>
+    /// The only test in this suite that waits on wall-clock time, and it is worth the
+    /// cost: a listener that fails to advance its offset is served the same update on
+    /// every poll, and the stub answers an unadvanced poll with no delay at all. The
+    /// failure is therefore hundreds of replies inside the settle window, not two, so
+    /// this cannot fail marginally. A false pass would need the machine to make no
+    /// progress for the whole window.
+    /// </remarks>
+    [Fact]
+    public async Task Listener_MessageAlreadyAnswered_DoesNotAnswerItAgain()
+    {
+        // Arrange
+        var settle = TimeSpan.FromSeconds(3);
+        await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "call the bank"));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+        await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
+        await Task.Delay(settle);
+
+        // Assert
+        Assert.Single(await wireMock.SentMessagesAsync());
+    }
 }
