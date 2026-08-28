@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan every commit for secrets
+        run: >
+          docker run --rm --volume "$PWD:/repo"
+          ghcr.io/gitleaks/gitleaks:v8.30.1
+          git /repo --no-banner --redact --verbose
+
+      - name: Install the .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore PersonalAssistant.slnx
+
+      - name: Build with warnings as errors
+        run: dotnet build PersonalAssistant.slnx --configuration Release --no-restore
+
+      - name: Start Postgres and the stub API
+        run: docker compose -f compose.test.yaml up -d --wait
+
+      - name: Unit and architecture tests
+        run: dotnet test tests/Assistant.UnitTests/Assistant.UnitTests.csproj --configuration Release --no-build
+
+      - name: Integration tests
+        run: dotnet test tests/Assistant.IntegrationTests/Assistant.IntegrationTests.csproj --configuration Release --no-build
