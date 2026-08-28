@@ -130,9 +130,9 @@ docker compose -f compose.test.yaml exec -T postgres-test \
 `ck_reminder_tasks_status_known` check constraint. `due_at` an hour in the past means the row
 is already due the moment the scheduler looks at it.
 
-Keep hand-seeded titles plain text. The notifier sends with `ParseMode.Html`, and HTML
-escaping is not implemented until F7 — a title containing `<` or `&` will be rejected by
-Telegram with a 400.
+The notifier sends with `ParseMode.Html` and escapes `&`, `<` and `>` before sending, so a
+hand-seeded title containing those characters is delivered as literal text rather than
+rejected — no need to keep hand-seeded titles plain.
 
 ### 5. Watch the stub
 
@@ -140,15 +140,23 @@ The scheduler ticks every 30 seconds. Give it up to about 30 seconds before conc
 anything is wrong — in the verified run, the message reached the stub 19 seconds after the
 row was inserted.
 
+Since F7, the worker also runs `TelegramListener`
+(`src/Assistant.Impl/Telegram/TelegramListener.cs`), a `BackgroundService` that long-polls
+Telegram's `getUpdates` for as long as the worker is running. Against real Telegram that poll
+blocks for up to 30 seconds between requests, but the stub's default `getUpdates` mapping
+answers immediately after a fixed one-second delay, so a running worker adds a `getUpdates`
+entry to the stub's request log roughly once per second. The raw `__admin/requests` log is
+therefore mostly `getUpdates` polls, not the reminder — filter to `sendMessage`:
+
 ```bash
-curl -s http://localhost:58080/__admin/requests
+curl -s http://localhost:58080/__admin/requests \
+  | python3 -c "import json,sys; [print(e['Request']['Body']) for e in json.load(sys.stdin) if e['Request']['Path'].endswith('/sendMessage')]"
 ```
 
-You should see a request like this:
+You should see the request body printed on its own:
 
 ```
-URL : http://localhost:58080/bot111111:AAFakeTokenForLocalStubRunsOnly_xxxxx/sendMessage
-BODY: {"chat_id":<your-chat-id>,"text":"Call the bank","parse_mode":"Html"}
+{"chat_id":<your-chat-id>,"text":"Call the bank","parse_mode":"Html"}
 ```
 
 Note that `text` is the bare task title, with no prefix — that is the behaviour conventions
@@ -168,10 +176,12 @@ docker compose -f compose.test.yaml exec -T postgres-test \
 ### 7. Confirm the reminder does not fire twice
 
 This is the single most valuable check in the walkthrough. Wait another 45 seconds — one and
-a half tick intervals — and count the stub's requests again:
+a half tick intervals — and count the stub's `sendMessage` requests again, filtering out the
+`getUpdates` polling the same way as step 5:
 
 ```bash
-curl -s http://localhost:58080/__admin/requests
+curl -s http://localhost:58080/__admin/requests \
+  | python3 -c "import json,sys; print(sum(1 for e in json.load(sys.stdin) if e['Request']['Path'].endswith('/sendMessage')))"
 ```
 
 The count should stay at exactly one. That proves the row was marked sent rather than
@@ -247,9 +257,9 @@ a past `due_at`; a row with `status = 0` is rejected outright by the check const
 never gets inserted. If the worker is running and the row looks right, give it the rest of
 the 30-second tick window before assuming something is broken.
 
-**A seeded title with `<` or `&` gets a 400 from Telegram (or from the stub).** Expected —
-HTML escaping is not implemented until F7. Keep hand-seeded titles plain text; this is not a
-bug in the scheduler.
+**A seeded title with `<` or `&` gets a 400 from Telegram (or from the stub).** Should not
+happen — `TelegramNotifier` escapes `&`, `<` and `>` before every send (F7). If you see this,
+the escaping regressed; it is not expected behaviour in the scheduler.
 
 **`ConfigurationErrorsException: TelegramSettings.OwnerChatId is missing or zero.`** The owner
 chat id is unset or was left as a placeholder. Set it with

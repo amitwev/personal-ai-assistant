@@ -6,7 +6,10 @@ you back when it is due. Runs as one .NET 10 process against PostgreSQL.
 
 ## Commands
 
-Every command below is run by CI, so if one fails here it fails there too.
+These are the commands to run before opening a pull request. Nothing runs them automatically
+yet — there is no CI in this repository (see "Continuous integration" in
+`docs/design/2026-08-22-slice-1-feature-backlog.md`), so a failing command here will not be
+caught by anything except a human reading the diff.
 
 ### Prerequisites
 - .NET 10 SDK

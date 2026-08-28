@@ -322,6 +322,14 @@ Telegram update arrives (long poll)
 
 The whitelist check happens before any LLM call, so an unknown sender costs nothing.
 
+**Deferred:** F7 shipped the listener without the `persist inbound message to chat_messages`
+step. `ChatMessage` and its table arrive at F13; F7 writes nothing to the database, and the reply
+above is built from the update Telegram just delivered, not from anything read back.
+
+**Deferred:** F7 shipped without the `start "typing…" indicator` step. There is nothing to
+compose until F9 makes a model call — F7's reply is the user's own text echoed back, which is
+instant, so there is no wait for an indicator to cover.
+
 ### 5.2 System prompt
 
 The current local time is injected on every call:

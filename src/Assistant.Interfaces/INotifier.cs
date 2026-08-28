@@ -13,7 +13,10 @@ public interface INotifier
     /// <summary>
     /// Sends a message to the owner.
     /// </summary>
-    /// <param name="text">The message body, already rendered.</param>
+    /// <param name="text">
+    /// The message body, as plain text. The adapter escapes whatever its channel requires
+    /// before sending, so callers must not pre-escape.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task that completes once the message has been accepted for delivery.</returns>
     Task SendAsync(string text, CancellationToken ct);

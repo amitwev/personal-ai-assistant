@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace Assistant.IntegrationTests.Infrastructure;
@@ -15,6 +17,12 @@ namespace Assistant.IntegrationTests.Infrastructure;
 public sealed class WireMockFixture : IAsyncLifetime
 {
     private const string DefaultUrl = "http://localhost:58080";
+
+    private static readonly Guid PendingUpdatesMapping =
+        new("f7000000-0000-0000-0000-000000000001");
+
+    private static readonly Guid DrainedUpdatesMapping =
+        new("f7000000-0000-0000-0000-000000000002");
 
     private readonly HttpClient _http = new();
 
@@ -65,9 +73,16 @@ public sealed class WireMockFixture : IAsyncLifetime
     /// <summary>
     /// Forgets every request the stub has received.
     /// </summary>
-    /// <returns>A task that completes once the request log is empty.</returns>
-    public async Task ResetAsync() =>
+    /// <returns>A task that completes once the request log is empty and any seeded mapping is gone.</returns>
+    public async Task ResetAsync()
+    {
+        foreach (var id in new[] { PendingUpdatesMapping, DrainedUpdatesMapping })
+        {
+            (await _http.DeleteAsync($"{Url}/__admin/mappings/{id}")).Dispose();
+        }
+
         (await _http.DeleteAsync($"{Url}/__admin/requests")).EnsureSuccessStatusCode();
+    }
 
     /// <summary>
     /// Returns the send-message requests the stub received, in order.
@@ -86,6 +101,70 @@ public sealed class WireMockFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Makes the stub serve the given updates to the next getUpdates poll.
+    /// </summary>
+    /// <param name="updates">The updates to serve, in the order Telegram would.</param>
+    /// <returns>A task that completes once both mappings are installed.</returns>
+    /// <remarks>
+    /// Two mappings, drained by the offset in the request body rather than by a call
+    /// count: once the caller polls with an offset past the last update it gets an
+    /// empty result and keeps getting one, which is what real Telegram does. A
+    /// listener that never advances its offset therefore keeps being served the same
+    /// updates, which is the defect this shape exists to expose.
+    /// </remarks>
+    public async Task SeedUpdatesAsync(params InboundUpdate[] updates)
+    {
+        var pending = new JsonArray(updates.Select(u => (JsonNode)new JsonObject
+        {
+            ["update_id"] = u.UpdateId,
+            ["message"] = new JsonObject
+            {
+                ["message_id"] = u.UpdateId,
+                ["date"] = 1756000000L,
+                ["chat"] = new JsonObject { ["id"] = u.ChatId, ["type"] = "private" },
+                ["text"] = u.Text,
+            },
+        }).ToArray());
+
+        var nextOffset = updates.Max(u => u.UpdateId) + 1;
+
+        await PutMappingAsync(PendingUpdatesMapping, priority: 10, bodyPattern: null,
+            result: pending, delayMs: null);
+
+        await PutMappingAsync(DrainedUpdatesMapping, priority: 1,
+            bodyPattern: $"*\"offset\":{nextOffset}*", result: new JsonArray(), delayMs: 1000);
+    }
+
+    /// <summary>
+    /// Waits until the stub has received at least the given number of messages.
+    /// </summary>
+    /// <param name="count">How many messages to wait for.</param>
+    /// <param name="timeout">How long to wait before giving up.</param>
+    /// <returns>Every message received, which may be more than requested.</returns>
+    /// <exception cref="TimeoutException">Too few messages arrived in time.</exception>
+    public async Task<IReadOnlyList<SendMessagePayload>> WaitForSentMessagesAsync(
+        int count, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var sent = await SentMessagesAsync();
+
+            if (sent.Count >= count)
+            {
+                return sent;
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException(
+            $"Expected at least {count} message(s) within {timeout.TotalSeconds:0.#}s; "
+            + $"got {(await SentMessagesAsync()).Count}.");
+    }
+
+    /// <summary>
     /// Releases the HTTP client.
     /// </summary>
     /// <returns>A completed task.</returns>
@@ -93,6 +172,60 @@ public sealed class WireMockFixture : IAsyncLifetime
     {
         _http.Dispose();
         return Task.CompletedTask;
+    }
+
+    private async Task PutMappingAsync(
+        Guid id, int priority, string? bodyPattern, JsonNode result, int? delayMs)
+    {
+        var request = new JsonObject
+        {
+            ["Path"] = new JsonObject
+            {
+                ["Matchers"] = new JsonArray(new JsonObject
+                {
+                    ["Name"] = "WildcardMatcher",
+                    ["Pattern"] = "/bot*/getUpdates",
+                }),
+            },
+            ["Methods"] = new JsonArray("POST"),
+        };
+
+        if (bodyPattern is not null)
+        {
+            request["Body"] = new JsonObject
+            {
+                ["Matcher"] = new JsonObject
+                {
+                    ["Name"] = "WildcardMatcher",
+                    ["Pattern"] = bodyPattern,
+                },
+            };
+        }
+
+        var response = new JsonObject
+        {
+            ["StatusCode"] = 200,
+            ["Headers"] = new JsonObject { ["Content-Type"] = "application/json" },
+            ["Body"] = new JsonObject { ["ok"] = true, ["result"] = result }.ToJsonString(),
+        };
+
+        if (delayMs is not null)
+        {
+            response["Delay"] = delayMs;
+        }
+
+        var mapping = new JsonObject
+        {
+            ["Guid"] = id.ToString(),
+            ["Priority"] = priority,
+            ["Request"] = request,
+            ["Response"] = response,
+        };
+
+        using var content = new StringContent(
+            mapping.ToJsonString(), Encoding.UTF8, "application/json");
+
+        (await _http.PostAsync($"{Url}/__admin/mappings", content)).EnsureSuccessStatusCode();
     }
 
     private sealed record AdminLogEntry(
@@ -126,3 +259,11 @@ public sealed record SendMessagePayload(
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; init; }
 }
+
+/// <summary>
+/// An inbound Telegram update, as <see cref="WireMockFixture.SeedUpdatesAsync"/> serves it.
+/// </summary>
+/// <param name="UpdateId">Telegram's identifier for the update.</param>
+/// <param name="ChatId">The chat the message appears to come from.</param>
+/// <param name="Text">The message body.</param>
+public sealed record InboundUpdate(int UpdateId, long ChatId, string Text);

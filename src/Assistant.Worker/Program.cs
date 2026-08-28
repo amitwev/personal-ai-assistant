@@ -22,6 +22,7 @@ builder.Services.AddAssistantRepository(
     builder.Configuration.Read<DatabaseSettings>().ConnectionString);
 builder.Services.AddAssistantServices();
 builder.Services.AddAssistantScheduler();
+builder.Services.AddAssistantListener();
 
 var host = builder.Build();
 await host.Services.MigrateAssistantDatabaseAsync();

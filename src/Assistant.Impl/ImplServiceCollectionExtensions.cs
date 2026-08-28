@@ -58,4 +58,20 @@ public static class ImplServiceCollectionExtensions
         services.AddHostedService<ReminderScheduler>();
         return services;
     }
+
+    /// <summary>
+    /// Registers the inbound Telegram listener.
+    /// </summary>
+    /// <param name="services">The container to add registrations to.</param>
+    /// <returns>The same <paramref name="services"/>, for chaining.</returns>
+    /// <remarks>
+    /// Requires <c>AddAssistantTelegram</c> for the client and the owner's chat id, and
+    /// <c>AddAssistantServices</c> for the <see cref="TimeProvider"/> the failure backoff uses.
+    /// </remarks>
+    public static IServiceCollection AddAssistantListener(this IServiceCollection services)
+    {
+        services.AddSingleton<ITelegramUpdateHandler, MessageHandler>();
+        services.AddHostedService<TelegramListener>();
+        return services;
+    }
 }

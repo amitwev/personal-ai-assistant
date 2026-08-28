@@ -274,16 +274,142 @@ owner, since it needs their bot token.
 **F6 · Complete a task from a button · observable** — spec §6.4
 `ITaskAction` + `DoneAction`, `ICallbackHandler` + `CallbackRouter`, the `v1:<action>:<id>`
 callback codec, in-place message edit, and `ITaskService.CompleteAsync`. `ReminderTask` regains
-`CompletedAt`, which also brings back the `ck_completed_consistency` check constraint.
+`CompletedAt`, which also brings back the `ck_completed_consistency` check constraint. Depends on
+F7's `TelegramListener`: a callback query arrives on the same `getUpdates` stream. F6 adds a
+`CallbackQuery` handler and registers it, and `allowedUpdates` follows on its own — but the
+handler must apply the owner check itself, because there is no base class doing it.
 *Tests:* one tap completes; a second tap says "already done" rather than erroring; the callback
 query is always answered.
 
 ### Capture path — the flow you described
 
-**F7 · Consume inbound messages** — spec §5.1
+**F7 · Consume inbound messages** — spec §5.1 · **done**
 `TelegramListener` long-poll loop, owner whitelist, and an echo reply. No AI yet.
 *Tests:* a whitelisted sender gets a reply; a non-whitelisted sender is ignored silently and
-costs nothing.
+costs nothing; a message already answered is not answered again, even though the listener keeps
+polling.
+*Settled at F7:*
+- **One class, not two.** The approved design paired `TelegramListener` (loop) with a
+  `MessageHandler` (work), mirroring F5b's `ReminderScheduler`/`DueReminderJob` split. That split
+  earns its keep at F5b because `ReminderScheduler` injects `IEnumerable<IScheduledJob>` — a real
+  seam with a second implementation, `DailyBriefJob`. `TelegramListener` calls exactly one handler
+  through no interface at all, so a second class would be ceremony: the backlog's own rule already
+  says an abstraction with one implementation is a guess. `TelegramListener` owns the loop, the
+  offset, the whitelist, and the reply in about 60 lines. **Cost if this is wrong:** F6 extracts a
+  handler from a 60-line class it is already editing.
+- **Reversed: one class was wrong, and the cost predicted above arrived on schedule.**
+  `allowedUpdates: [UpdateType.Message]` was hardcoded with a comment telling F6 to remember to add
+  `UpdateType.CallbackQuery`, and the owner whitelist lived in the private `HandleAsync`, so F6's
+  callback handling would have had to remember to apply it again. A comment warning the next
+  feature about a trap is evidence of a trap, not a fix for one — "an abstraction with one
+  implementation is a guess" is a good rule, but it argues against a seam justified by a
+  hypothetical second implementation, not against one justified by a documented, already-written
+  trap. `TelegramListener` now injects `IEnumerable<ITelegramUpdateHandler>`, derives
+  `allowedUpdates` from `handlers.Select(h => h.Handles).Distinct()`, and dispatches each update to
+  every handler that claims it, each in its own try/catch — `MessageHandler` is the sole handler
+  today, and it applies the owner check itself. `ITelegramUpdateHandler` stays internal to
+  `Assistant.Impl` rather than moving to `Assistant.Interfaces` with every other interface, because
+  it names `Telegram.Bot.Types.Update` and
+  `DependencyRuleTests.Interfaces_do_not_depend_on_infrastructure_libraries` fails the build if
+  `Assistant.Interfaces` references `Telegram.Bot`. This was a behaviour-preserving refactor:
+  `TelegramListenerTests.cs` — owner gets a reply, stranger does not, an answered message is not
+  answered twice — passed unchanged before and after, which is what proves behaviour was
+  preserved rather than merely reshuffled.
+- **Reversed again: the extracted base class was also wrong.** The same refactor introduced an
+  abstract `OwnerOnlyUpdateHandler` holding the owner check, and that class was dropped before this
+  PR merged. One subclass made it a single-case abstraction, which this backlog's own rule and
+  `TelegramNotifier`'s remarks both forbid. The `ScheduledJobBase` parallel drawn above doesn't
+  hold either: `ScheduledJobBase` hides mechanism a subclass never touches, while
+  `OwnerOnlyUpdateHandler` held a policy the subclass had to feed back in through `ChatIdOf`. And
+  the protection was opt-in anyway — the listener dispatches on `ITelegramUpdateHandler`, so a
+  handler that implements the interface directly skips the check entirely, base class or not. The
+  owner check now lives inline in `MessageHandler`. **Cost if this is wrong:** F6 writes the owner
+  check by hand in its callback handler, and if it forgets, anyone who finds the bot can press
+  buttons that complete the owner's tasks. The base is worth re-extracting once two real handlers
+  exist, when it will be clear whether it should be generic over the payload to avoid the
+  double-unwrap.
+- **The whitelist compares `Message.Chat.Id`, not `Message.From.Id`.** Spec §5.1 says "reject any
+  sender other than the configured owner ID"; "sender" reads as `From.Id`, a user id, while
+  `TelegramSettings.OwnerChatId` is a chat id — the same number only in a private one-to-one chat.
+  Comparing `Chat.Id` reuses the setting that already exists rather than adding an `OwnerUserId`
+  that would, for this product, always hold an identical value — a second source of truth for one
+  number. It is also the field that stays correct outside that one case: a stranger's message
+  carries their own chat id and is dropped, and the check is still correct if the bot is ever added
+  to a group, where `Chat.Id` is the group's, still not the owner's. `From` is additionally
+  nullable on `Message` and absent from the stub's canned bodies, so `Chat.Id` is the field
+  reliably present to compare.
+- **The reply goes through `INotifier`, unchanged — and this is now proven, not just argued.** No
+  new interface, no `SendToAsync(chatId, ...)` overload: `INotifier`'s recipient comes from
+  configuration, so it is structurally incapable of addressing anyone but the owner. Deliberately
+  breaking the whitelist to prove the whitelist test could fail confirmed the shape of the defect
+  rather than just its existence — both replies still landed in the owner's chat; the stranger's
+  *text* was echoed back, but the destination never moved. A bypassed whitelist makes the owner
+  read a stranger's words, not the stranger receive anything.
+- **Advance the offset before handling — the opposite of F5b's ordering.** F5b sends and then
+  marks, so a crash re-delivers rather than loses a reminder, because a lost reminder is this
+  product's core failure. F7 marks first: `_offset = update.Id + 1` runs before the update is
+  handled, because the failure that matters here is different — a lost echo costs one retype,
+  while a handler that always throws and is re-polled forever wedges the bot and hammers Telegram
+  at full speed. Advancing first bounds a poison message's cost to exactly one dropped reply.
+  Handling is wrapped in its own try/catch inside the loop over the batch, not around it, so one
+  throwing update does not stop the next update in the same batch from running.
+- **The stub answers `getUpdates` by matching the offset in the request body, not a WireMock
+  scenario.** A scenario-based stub was tried first: with an entry mapping and a
+  `WhenStateIs: "drained"` mapping, the third call served the seeded update again — scenarios
+  cycle. Pinning the drained state fixes the cycling but then needs `POST /__admin/scenarios/reset`
+  between tests, and, fatally, it drains by call count, so a listener that never advances its
+  offset still passes. Two priority-ordered mappings instead — any `getUpdates` POST served at
+  priority 10, a body match on the advanced offset served at priority 1 — drain by the same signal
+  real Telegram uses: once the listener sends the advanced offset it gets, and keeps getting, the
+  empty result. No scenario reset, no call counting. This is also what makes the offset testable
+  through a business outcome rather than a mock verification: a listener that never advances its
+  offset keeps matching the *pending* mapping and echoes the same message forever. Deliberately
+  breaking the offset advance to check the no-repeat test could fail measured 3704 replies in the
+  3-second settle window — ten to thirty times the plan's own estimate of "hundreds". The direction
+  was right; the magnitude was not close. It cannot fail marginally either way.
+- **The drained response carries a one-second delay.** Real Telegram holds a `getUpdates` call
+  open for the requested `timeout`; WireMock answers instantly, so a correct listener would spin at
+  full speed against the stub — thousands of requests during a test, a pegged core during a local
+  `dotnet run`. A `"Delay": 1000` on the drained mapping throttles the idle loop to roughly one poll
+  a second without slowing any test, because every test's reply comes from the first poll, which
+  matches the undelayed pending mapping.
+- **The integration tests drive the real hosted service, because they cannot name
+  `TelegramListener`.** `Assistant.IntegrationTests` references only `Assistant.Worker`, reaching
+  `Assistant.Impl` transitively, and `Assistant.Impl`'s `InternalsVisibleTo` names only
+  `Assistant.UnitTests`. That is not worked around — it is the constraint that keeps the tests
+  honest. They resolve `IHostedService` from the container `AddAssistantListener()` builds, start
+  it, and assert on what reaches the stub, exactly as F5b resolved `IScheduledJob` through
+  `AddAssistantScheduler()`. No `InternalsVisibleTo` was added for the integration project, and
+  `TelegramListener` stays internal.
+- **A deliberate-break instruction can itself be wrong.** The plan's own recipe for proving the
+  whitelist test could fail was to delete the whitelist clause outright. Doing that leaves the
+  `settings` primary-constructor parameter unreferenced, which trips `CS9113` under
+  warnings-as-errors — it does not compile, so it cannot even reach the test it was meant to fail.
+  The break that actually exercises the test is making the comparison false at runtime instead of
+  removing it. Worth recording on its own: the failure mode was in the break instruction, not in
+  the code it was checking.
+- **The HTML-escaping debt F5b flagged as owed by F7 is discharged.** `TelegramNotifier` now
+  escapes `&`, `<` and `>` before every send. Of the two consequences the debt carried, the
+  reminder path was the more severe and had been live on `main` since F5b: `DueReminderJob` sends
+  `task.Title` and then calls `MarkReminderSentAsync`, so a title containing `<` or `&` made the
+  send throw, the mark never ran, and the `foreach` over the batch aborted — that task retried
+  every 30 seconds forever, and every reminder behind it in the same batch was blocked with it.
+  F7's own echo carried the milder version: typing `5 < 6` to the bot produced a 400 and silence.
+  Escaping lives in `TelegramNotifier`, not at its call sites, because it is the only type that
+  knows it is sending HTML — today one hundred percent of what it sends is plain text and nothing
+  sends markup, so a text-versus-markup distinction would be an abstraction with one case, which
+  the backlog's own YAGNI rule forbids. F10 is the first feature that renders markup, and it earns
+  that distinction then. The three replacements are hand-rolled (`Replace("&","&amp;")` before
+  `Replace("<","&lt;")` before `Replace(">","&gt;")`) rather than delegated to a general-purpose
+  encoder: `&` must run first because reversing it makes `<` become `&lt;` and then the `&` that
+  replacement just introduced gets re-escaped into `&amp;lt;`, rendering as literal text instead
+  of a bracket. `WebUtility.HtmlEncode` was tried and rejected on suspicion it would numeric-encode
+  non-ASCII text; verified directly on .NET 10, it turns out to reach only the Latin-1 Supplement
+  range and characters outside the Basic Multilingual Plane — it leaves Hebrew alone but still
+  turns "café" into "caf&amp;#233;" — while `System.Text.Encodings.Web.HtmlEncoder.Default`, an
+  equally reachable general-purpose choice, does numeric-encode this bot's Hebrew text
+  wholesale. Either is a trap a maintainer could reach for without noticing; hand-rolling three
+  fixed replacements is immune by construction, because it can only ever touch `&`, `<` and `>`.
 
 **F8 · Resolve local time** — spec §5.4
 `ILocalTimeResolver` + `LocalTimeResolver` over the configured IANA zone, and the guard clauses:
@@ -343,6 +469,18 @@ restart policy. F14 already lists `Dockerfile` and `compose.yaml` among its cont
 not a competing feature number — it is a flag that the gap F5b found is real and directly
 observed, not merely anticipated, and worth tracking on its own until F14 is planned.
 
+**Continuous integration** — spec §9 step 1, §11.2, §11.3 · **unscheduled**
+There is no `.github/workflows` directory in this repository, and there never has been — no pull
+request has ever been checked by a machine. Spec §9 step 1 lists "GitHub Actions workflow running
+them" as part of the very first implementation step, before any code was written; it was skipped.
+§11.2 states that gitleaks "runs in CI on every push and pull request" — it does not run anywhere,
+and during F5b a live Postgres password reached the tracked, public `appsettings.json` and was
+caught only by a human reading a diff, not by any machine. §11.3 already specifies the stages this
+needs: restore, build with warnings as errors, architecture tests, unit tests, integration tests,
+gitleaks. F14 already lists `.github/workflows/ci.yml` among its contents, so this is not a
+competing feature number — it is a flag that a promise the documents already make is unbacked,
+which is worse than not having made it.
+
 ---
 
 ## 4. Deferred model properties
@@ -365,8 +503,13 @@ an HTTP API, calendar integration, voice transcription, multi-user. Spec §1.3 a
 ## 6. Order and dependencies
 
 F1 → F2 → F3 → F4a → F5a → F5b is a chain; nothing in it can be reordered. F4b depends only on
-F4a and does not block F5a. F6 needs F5b. F7 is independent of F1-F6 and could move earlier if you
-want to talk to the bot sooner.
+F4a and does not block F5a. F6 needs F5b **and F7**: a button tap arrives as a `callback_query`
+on the same `getUpdates` stream `TelegramListener` polls, so without the listener there is
+nothing to route the tap to. This backlog previously called F7 "independent of F1-F6" and free to
+move earlier only if you wanted to talk to the bot sooner — both halves understated the truth; F7
+is not optional-but-early, F6 cannot be built without it. The binding spec had this right from the
+start: §9's implementation order puts the Telegram round-trip at step 5 and buttons at step 7,
+after it. The backlog's own numbering, not the spec, was wrong.
 F8 → F9 → F10 is a chain. F11-F14 each depend only on F10.
 
 Three milestones are worth pausing on: **F5b** (a reminder actually fires), **F10** (the whole
