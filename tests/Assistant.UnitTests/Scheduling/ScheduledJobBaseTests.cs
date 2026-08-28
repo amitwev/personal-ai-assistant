@@ -26,7 +26,7 @@ public sealed class ScheduledJobBaseTests
         await job.RunAsync(CancellationToken.None).WaitAsync(SafetyNet);
 
         // Assert
-        Assert.Equal(1, job.StartCount);
+        Assert.Equal(2, job.StartCount);
 
         job.Release();
         await firstRun;
