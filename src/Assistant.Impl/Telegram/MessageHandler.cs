@@ -12,20 +12,23 @@ namespace Assistant.Impl.Telegram;
 /// <param name="notifier">Where the reply is delivered.</param>
 /// <remarks>
 /// No AI yet: this is F7's placeholder response, replaced once a real reply is composed.
+/// <para>
+/// The owner check lives inline here, on purpose: the assistant serves exactly one person, so
+/// there is nothing to route between. Any future handler must apply the same check itself —
+/// nothing in <see cref="ITelegramUpdateHandler"/> or <see cref="TelegramListener"/> enforces it.
+/// </para>
 /// </remarks>
 internal sealed class MessageHandler(TelegramSettings settings, INotifier notifier)
-    : OwnerOnlyUpdateHandler(settings)
+    : ITelegramUpdateHandler
 {
     /// <inheritdoc/>
-    public override UpdateType Handles => UpdateType.Message;
+    public UpdateType Handles => UpdateType.Message;
 
     /// <inheritdoc/>
-    protected override long? ChatIdOf(Update update) => update.Message?.Chat.Id;
-
-    /// <inheritdoc/>
-    protected override async Task HandleOwnerUpdateAsync(Update update, CancellationToken ct)
+    public async Task HandleAsync(Update update, CancellationToken ct)
     {
-        if (update.Message?.Text is not { } text)
+        if (update.Message is not { Chat.Id: var chatId, Text: { } text } ||
+            chatId != settings.OwnerChatId)
         {
             return;
         }

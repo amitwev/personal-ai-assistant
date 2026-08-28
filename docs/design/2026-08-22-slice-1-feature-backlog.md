@@ -275,9 +275,9 @@ owner, since it needs their bot token.
 `ITaskAction` + `DoneAction`, `ICallbackHandler` + `CallbackRouter`, the `v1:<action>:<id>`
 callback codec, in-place message edit, and `ITaskService.CompleteAsync`. `ReminderTask` regains
 `CompletedAt`, which also brings back the `ck_completed_consistency` check constraint. Depends on
-F7's `TelegramListener`: a callback query arrives on the same `getUpdates` stream, so this feature
-must add `UpdateType.CallbackQuery` to the listener's `allowedUpdates` array or its buttons will
-silently never fire.
+F7's `TelegramListener`: a callback query arrives on the same `getUpdates` stream. F6 adds a
+`CallbackQuery` handler and registers it, and `allowedUpdates` follows on its own — but the
+handler must apply the owner check itself, because there is no base class doing it.
 *Tests:* one tap completes; a second tap says "already done" rather than erroring; the callback
 query is always answered.
 
@@ -306,17 +306,28 @@ polling.
   hypothetical second implementation, not against one justified by a documented, already-written
   trap. `TelegramListener` now injects `IEnumerable<ITelegramUpdateHandler>`, derives
   `allowedUpdates` from `handlers.Select(h => h.Handles).Distinct()`, and dispatches each update to
-  every handler that claims it, each in its own try/catch — the shape mirrors
-  `ReminderScheduler`/`IScheduledJob`/`ScheduledJobBase`/`DueReminderJob` one layer down, with
-  `OwnerOnlyUpdateHandler` holding the whitelist exactly as `ScheduledJobBase` holds the
-  re-entrancy guard, and `MessageHandler` as the sole handler today. `ITelegramUpdateHandler` and
-  `OwnerOnlyUpdateHandler` stay internal to `Assistant.Impl` rather than moving to
-  `Assistant.Interfaces` with every other interface, because they name
-  `Telegram.Bot.Types.Update` and `DependencyRuleTests.Interfaces_do_not_depend_on_infrastructure_libraries`
-  fails the build if `Assistant.Interfaces` references `Telegram.Bot`. This was a behaviour-
-  preserving refactor: `TelegramListenerTests.cs` — owner gets a reply, stranger does not, an
-  answered message is not answered twice — passed unchanged before and after, which is what proves
-  behaviour was preserved rather than merely reshuffled.
+  every handler that claims it, each in its own try/catch — `MessageHandler` is the sole handler
+  today, and it applies the owner check itself. `ITelegramUpdateHandler` stays internal to
+  `Assistant.Impl` rather than moving to `Assistant.Interfaces` with every other interface, because
+  it names `Telegram.Bot.Types.Update` and
+  `DependencyRuleTests.Interfaces_do_not_depend_on_infrastructure_libraries` fails the build if
+  `Assistant.Interfaces` references `Telegram.Bot`. This was a behaviour-preserving refactor:
+  `TelegramListenerTests.cs` — owner gets a reply, stranger does not, an answered message is not
+  answered twice — passed unchanged before and after, which is what proves behaviour was
+  preserved rather than merely reshuffled.
+- **Reversed again: the extracted base class was also wrong.** The same refactor introduced an
+  abstract `OwnerOnlyUpdateHandler` holding the owner check, and that class was dropped before this
+  PR merged. One subclass made it a single-case abstraction, which this backlog's own rule and
+  `TelegramNotifier`'s remarks both forbid. The `ScheduledJobBase` parallel drawn above doesn't
+  hold either: `ScheduledJobBase` hides mechanism a subclass never touches, while
+  `OwnerOnlyUpdateHandler` held a policy the subclass had to feed back in through `ChatIdOf`. And
+  the protection was opt-in anyway — the listener dispatches on `ITelegramUpdateHandler`, so a
+  handler that implements the interface directly skips the check entirely, base class or not. The
+  owner check now lives inline in `MessageHandler`. **Cost if this is wrong:** F6 writes the owner
+  check by hand in its callback handler, and if it forgets, anyone who finds the bot can press
+  buttons that complete the owner's tasks. The base is worth re-extracting once two real handlers
+  exist, when it will be clear whether it should be generic over the payload to avoid the
+  double-unwrap.
 - **The whitelist compares `Message.Chat.Id`, not `Message.From.Id`.** Spec §5.1 says "reject any
   sender other than the configured owner ID"; "sender" reads as `From.Id`, a user id, while
   `TelegramSettings.OwnerChatId` is a chat id — the same number only in a private one-to-one chat.
