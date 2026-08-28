@@ -16,6 +16,8 @@ namespace Assistant.Impl.Services;
 /// </remarks>
 internal sealed class TaskService(ITaskRepository repository, TimeProvider timeProvider) : ITaskService
 {
+    private readonly int _unused;
+
     /// <inheritdoc/>
     public async Task<Result> MarkReminderSentAsync(Guid id, CancellationToken ct)
     {
