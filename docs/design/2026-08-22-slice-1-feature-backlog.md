@@ -458,6 +458,8 @@ told. `ChatMessage` + `chat_messages` arrive here for the conversation window.
 — already exists and is already exercised by `TelegramSettings`. F14 inherits only
 `appsettings.{Environment}.json` and validation for the settings types slice 1 still needs, not
 the mechanism itself.
+**Reduced by CI:** `.github/workflows/ci.yml` already exists and runs gitleaks, the build, and
+both test suites. F14 inherits only the eval workflow and the image-publishing job (spec §11.6).
 
 **Container packaging for the worker** — spec §8, §11.6 · **unscheduled**
 There is no `compose.yaml` and no worker `Dockerfile` in this repository, and there never has
@@ -494,6 +496,14 @@ which is worse than not having made it.
   fails to compile would raise no secret warning. And a leaked credential is already leaked the
   moment it reaches a public repository — ordering only controls how fast the owner is told to
   revoke it, roughly thirty seconds first-in-job against several minutes last-in-job.
+- **`ci.yml` narrows spec §11.2's "every push and pull request" to every pull request plus every
+  push to `main`, not every push.** A feature-branch push almost always already has an open pull
+  request, which the `pull_request` trigger already scans, so covering every push as well would
+  run the whole suite twice for the same commit. This sits in tension with the bullet above:
+  gitleaks was moved first because time-to-notification matters enough to reorder the whole file,
+  yet this narrowing accepts an unbounded delay for a push to a branch with no pull request open
+  yet. It is still the right trade — a leaked credential is public the moment it is pushed either
+  way, and the pull request scan catches it before merge.
 - **The official gitleaks Docker image, not `gitleaks/gitleaks-action`.** The action gates on a
   `GITLEAKS_LICENSE` for organisations; free for a personal repository today, but that is a third
   party's licensing decision sitting inside this build, and the image carries no such gate.
@@ -518,14 +528,20 @@ which is worse than not having made it.
 - **Each of the three failure-detecting stages was proven to go red on its own throwaway
   branch, and none of the three branches was merged.** `ci-break-gitleaks` tripped
   `Scan every commit for secrets` — not with the AWS example key the task brief named, since
-  gitleaks's own default ruleset allowlists any match ending `EXAMPLE` precisely because that
-  key is AWS's published documentation example, so the branch was repeated with a random value
-  that tripped the `generic-api-key` rule instead. `ci-break-warnings` added an unused field,
+  gitleaks's own default ruleset allowlists `AKIAIOSFODNN7EXAMPLE`, AWS's own published
+  documentation example, so the branch was repeated with a random value that tripped the
+  `generic-api-key` rule instead. `ci-break-warnings` added an unused field,
   not a constructor parameter, to `TaskService` in `Assistant.Impl` and tripped
   `Build with warnings as errors` on `CS0169`, with `Restore` staying green ahead of it — the
   F7 `CS9113` mistake was not repeated. `ci-break-test` flipped one assertion in
   `ScheduledJobBaseTests` and tripped `Unit and architecture tests`, naming the one test that
   failed, with the build staying green ahead of it.
+- **`AKIAIOSFODNN7EXAMPLE`, quoted above, is now permanent tracked history — the plan document
+  describing the `ci-break-gitleaks` branch quotes it too, so deleting that branch does not
+  remove it.** This repository is green today only because gitleaks v8.30.1's default ruleset
+  allowlists that exact key; whoever bumps the pinned version should re-run the scan before
+  assuming it still passes — a version whose allowlist differs would turn every pull request red
+  until a `.gitleaks.toml` is added.
 
 ---
 

@@ -8,8 +8,9 @@ you back when it is due. Runs as one .NET 10 process against PostgreSQL.
 
 These are the commands to run before opening a pull request. `.github/workflows/ci.yml` runs
 the restore, build, and both `dotnet test` commands below — the "Build and test" section — on
-every push and pull request, so a failing one there is caught by a machine, not only by a human
-reading the diff. Nothing under "Run locally" or "Database migrations" runs automatically.
+every pull request and every push to `main`, so a failing one there is caught by a machine, not
+only by a human reading the diff. Nothing under "Run locally" or "Database migrations" runs
+automatically.
 
 ### Prerequisites
 - .NET 10 SDK
