@@ -505,7 +505,9 @@ which is worse than not having made it.
   no — the local run showed no such error, so no `--user` flag was added.** A clean result on a
   non-Linux development machine does not settle this — Docker Desktop's bind mount ownership does
   not reproduce what a Linux CI runner's checkout looks like to a container running as root, so
-  the real test was the workflow's first run rather than a local one.
+  the real test was the workflow's first run rather than a local one. That run has since
+  happened: gitleaks passed on `ubuntu-latest` with no dubious-ownership error, confirming the
+  `--user` flag was correctly left out.
 - **The workflow's first run caught a race in `ReminderSchedulerTests` that had passed
   locally every time.** The test's `ArmSignallingTimeProvider` signalled `Armed` before its
   inner `FakeTimeProvider.CreateTimer` call had registered the timer, so the fake clock could
@@ -513,6 +515,17 @@ which is worse than not having made it.
   development machine almost never loses that race, a busier CI runner does. The fix was to
   the test's own harness — reordering the signal to fire after registration — not to
   `ReminderScheduler`.
+- **Each of the three failure-detecting stages was proven to go red on its own throwaway
+  branch, and none of the three branches was merged.** `ci-break-gitleaks` tripped
+  `Scan every commit for secrets` — not with the AWS example key the task brief named, since
+  gitleaks's own default ruleset allowlists any match ending `EXAMPLE` precisely because that
+  key is AWS's published documentation example, so the branch was repeated with a random value
+  that tripped the `generic-api-key` rule instead. `ci-break-warnings` added an unused field,
+  not a constructor parameter, to `TaskService` in `Assistant.Impl` and tripped
+  `Build with warnings as errors` on `CS0169`, with `Restore` staying green ahead of it — the
+  F7 `CS9113` mistake was not repeated. `ci-break-test` flipped one assertion in
+  `ScheduledJobBaseTests` and tripped `Unit and architecture tests`, naming the one test that
+  failed, with the build staying green ahead of it.
 
 ---
 
