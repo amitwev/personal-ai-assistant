@@ -506,6 +506,13 @@ which is worse than not having made it.
   non-Linux development machine does not settle this — Docker Desktop's bind mount ownership does
   not reproduce what a Linux CI runner's checkout looks like to a container running as root, so
   the real test was the workflow's first run rather than a local one.
+- **The workflow's first run caught a race in `ReminderSchedulerTests` that had passed
+  locally every time.** The test's `ArmSignallingTimeProvider` signalled `Armed` before its
+  inner `FakeTimeProvider.CreateTimer` call had registered the timer, so the fake clock could
+  be advanced before anything was listening and that advance was silently lost; an idle
+  development machine almost never loses that race, a busier CI runner does. The fix was to
+  the test's own harness — reordering the signal to fire after registration — not to
+  `ReminderScheduler`.
 
 ---
 

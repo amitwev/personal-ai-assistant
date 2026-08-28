@@ -74,8 +74,9 @@ public sealed class ReminderSchedulerTests
         /// <inheritdoc/>
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
+            var timer = inner.CreateTimer(callback, state, dueTime, period);
             _armed.TrySetResult();
-            return inner.CreateTimer(callback, state, dueTime, period);
+            return timer;
         }
     }
 
