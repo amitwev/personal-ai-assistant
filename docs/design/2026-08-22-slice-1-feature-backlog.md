@@ -469,7 +469,7 @@ restart policy. F14 already lists `Dockerfile` and `compose.yaml` among its cont
 not a competing feature number — it is a flag that the gap F5b found is real and directly
 observed, not merely anticipated, and worth tracking on its own until F14 is planned.
 
-**Continuous integration** — spec §9 step 1, §11.2, §11.3 · **unscheduled**
+**Continuous integration** — spec §9 step 1, §11.2, §11.3 · **done**
 There is no `.github/workflows` directory in this repository, and there never has been — no pull
 request has ever been checked by a machine. Spec §9 step 1 lists "GitHub Actions workflow running
 them" as part of the very first implementation step, before any code was written; it was skipped.
@@ -480,6 +480,32 @@ needs: restore, build with warnings as errors, architecture tests, unit tests, i
 gitleaks. F14 already lists `.github/workflows/ci.yml` among its contents, so this is not a
 competing feature number — it is a flag that a promise the documents already make is unbacked,
 which is worse than not having made it.
+*Settled at CI:*
+- **The architecture tests do not get their own stage**, unlike the four stages §11.3 lists
+  around them. They live inside `tests/Assistant.UnitTests/Architecture/`, in the same assembly
+  as every other unit test, so a separate stage would mean two filtered runs of one assembly —
+  and `dotnet test --filter` exits `0` when a filter matches nothing, so a typo in an inverse
+  filter would turn an entire stage into a silent no-op. A single unfiltered
+  `dotnet test tests/Assistant.UnitTests/Assistant.UnitTests.csproj` cannot skip anything that
+  way. §11.3's stage list predates the test projects; the architecture tests run in the stage
+  they physically live in.
+- **gitleaks runs first in `ci.yml`, not last as §11.3 lists it.** A last-place gitleaks step
+  never runs at all if the build fails first, so a pull request that both leaks a secret and
+  fails to compile would raise no secret warning. And a leaked credential is already leaked the
+  moment it reaches a public repository — ordering only controls how fast the owner is told to
+  revoke it, roughly thirty seconds first-in-job against several minutes last-in-job.
+- **The official gitleaks Docker image, not `gitleaks/gitleaks-action`.** The action gates on a
+  `GITLEAKS_LICENSE` for organisations; free for a personal repository today, but that is a third
+  party's licensing decision sitting inside this build, and the image carries no such gate.
+- **gitleaks was pinned to `v8.30.1`, invoked with the `git` subcommand** — `detect` was
+  confirmed absent from this line of releases by running `--help` against the pinned image.
+  Running it against the repository's full history found no findings, so no `.gitleaks.toml` was
+  created.
+- **Whether the container hit "dubious ownership" against this repository's bind mount:
+  no — the local run showed no such error, so no `--user` flag was added.** A clean result on a
+  non-Linux development machine does not settle this — Docker Desktop's bind mount ownership does
+  not reproduce what a Linux CI runner's checkout looks like to a container running as root, so
+  the real test was the workflow's first run rather than a local one.
 
 ---
 

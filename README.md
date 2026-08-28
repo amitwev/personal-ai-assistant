@@ -32,7 +32,9 @@ Self-hosted on a €5 VPS. Your data never leaves your machine.
 
 The whole test suite runs with **no credentials at all** — Telegram and the
 LLM APIs are stubbed with WireMock and Postgres comes from Docker Compose.
-Fork, `dotnet test`, done. See [AGENTS.md](./AGENTS.md) for every command and
+Fork, `dotnet test`, done. The same suite runs automatically on a fork's pull
+request, with zero credentials configured, via `.github/workflows/ci.yml`.
+See [AGENTS.md](./AGENTS.md) for every command and
 [docs/design/](./docs/design/) for why the system is shaped the way it is.
 
 ## Licence
