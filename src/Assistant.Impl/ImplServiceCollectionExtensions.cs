@@ -70,6 +70,7 @@ public static class ImplServiceCollectionExtensions
     /// </remarks>
     public static IServiceCollection AddAssistantListener(this IServiceCollection services)
     {
+        services.AddSingleton<ITelegramUpdateHandler, MessageHandler>();
         services.AddHostedService<TelegramListener>();
         return services;
     }

@@ -297,6 +297,26 @@ polling.
   says an abstraction with one implementation is a guess. `TelegramListener` owns the loop, the
   offset, the whitelist, and the reply in about 60 lines. **Cost if this is wrong:** F6 extracts a
   handler from a 60-line class it is already editing.
+- **Reversed: one class was wrong, and the cost predicted above arrived on schedule.**
+  `allowedUpdates: [UpdateType.Message]` was hardcoded with a comment telling F6 to remember to add
+  `UpdateType.CallbackQuery`, and the owner whitelist lived in the private `HandleAsync`, so F6's
+  callback handling would have had to remember to apply it again. A comment warning the next
+  feature about a trap is evidence of a trap, not a fix for one — "an abstraction with one
+  implementation is a guess" is a good rule, but it argues against a seam justified by a
+  hypothetical second implementation, not against one justified by a documented, already-written
+  trap. `TelegramListener` now injects `IEnumerable<ITelegramUpdateHandler>`, derives
+  `allowedUpdates` from `handlers.Select(h => h.Handles).Distinct()`, and dispatches each update to
+  every handler that claims it, each in its own try/catch — the shape mirrors
+  `ReminderScheduler`/`IScheduledJob`/`ScheduledJobBase`/`DueReminderJob` one layer down, with
+  `OwnerOnlyUpdateHandler` holding the whitelist exactly as `ScheduledJobBase` holds the
+  re-entrancy guard, and `MessageHandler` as the sole handler today. `ITelegramUpdateHandler` and
+  `OwnerOnlyUpdateHandler` stay internal to `Assistant.Impl` rather than moving to
+  `Assistant.Interfaces` with every other interface, because they name
+  `Telegram.Bot.Types.Update` and `DependencyRuleTests.Interfaces_do_not_depend_on_infrastructure_libraries`
+  fails the build if `Assistant.Interfaces` references `Telegram.Bot`. This was a behaviour-
+  preserving refactor: `TelegramListenerTests.cs` — owner gets a reply, stranger does not, an
+  answered message is not answered twice — passed unchanged before and after, which is what proves
+  behaviour was preserved rather than merely reshuffled.
 - **The whitelist compares `Message.Chat.Id`, not `Message.From.Id`.** Spec §5.1 says "reject any
   sender other than the configured owner ID"; "sender" reads as `From.Id`, a user id, while
   `TelegramSettings.OwnerChatId` is a chat id — the same number only in a private one-to-one chat.
