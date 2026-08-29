@@ -130,8 +130,89 @@ public sealed class LocalTimeResolverTests
         Assert.True(result.IsSuccess);
     }
 
+    /// <summary>
+    /// When the time given falls in the hour a spring-forward night skips
+    /// And it is resolved
+    /// Then it names the instant that same reading names past the gap.
+    /// </summary>
+    /// <param name="zoneId">The zone whose clocks move.</param>
+    /// <param name="local">A reading inside the gap.</param>
+    /// <param name="expectedUtc">The instant it names.</param>
+    /// <remarks>
+    /// Lord Howe Island is here because its gap is half an hour wide. Israel's is a full hour,
+    /// which is the same width as the offset change, so an implementation that confuses the two
+    /// cannot be caught in Israel alone.
+    /// </remarks>
+    [Theory]
+    [InlineData("Asia/Jerusalem", "2026-03-27T02:30:00", "2026-03-27T00:30:00Z")]
+    [InlineData("Australia/Lord_Howe", "2026-10-04T02:15:00", "2026-10-03T15:45:00Z")]
+    public void Resolve_TimeInsideASpringForwardGap_NamesTheInstantPastTheGap(
+        string zoneId, string local, string expectedUtc)
+    {
+        // Arrange
+        var resolver = ResolverIn(zoneId, "2026-01-01T00:00:00Z");
+
+        // Act
+        var result = resolver.Resolve(Wall(local));
+
+        // Assert
+        Assert.Equal(Instant(expectedUtc), result.Value);
+    }
+
+    /// <summary>
+    /// When the time given falls in the hour a fall-back night repeats
+    /// And it is resolved
+    /// Then it lands on the first of the two occurrences.
+    /// </summary>
+    /// <param name="zoneId">The zone whose clocks move.</param>
+    /// <param name="local">A reading inside the repeated hour.</param>
+    /// <param name="expectedUtc">The instant of its first occurrence.</param>
+    [Theory]
+    [InlineData("Asia/Jerusalem", "2026-10-25T01:30:00", "2026-10-24T22:30:00Z")]
+    [InlineData("Australia/Lord_Howe", "2026-04-05T01:45:00", "2026-04-04T14:45:00Z")]
+    public void Resolve_TimeInsideAFallBackHour_TakesTheFirstOccurrence(
+        string zoneId, string local, string expectedUtc)
+    {
+        // Arrange
+        var resolver = ResolverIn(zoneId, "2026-01-01T00:00:00Z");
+
+        // Act
+        var result = resolver.Resolve(Wall(local));
+
+        // Assert
+        Assert.Equal(Instant(expectedUtc), result.Value);
+    }
+
+    /// <summary>
+    /// When the time given sits either side of a clock change without touching it
+    /// And it is resolved
+    /// Then it is left exactly where it is.
+    /// </summary>
+    /// <param name="local">A reading just outside a transition.</param>
+    /// <param name="expectedUtc">The instant it names.</param>
+    [Theory]
+    [InlineData("2026-03-27T01:30:00", "2026-03-26T23:30:00Z")]
+    [InlineData("2026-03-27T03:30:00", "2026-03-27T00:30:00Z")]
+    [InlineData("2026-10-25T00:30:00", "2026-10-24T21:30:00Z")]
+    [InlineData("2026-10-25T02:30:00", "2026-10-25T00:30:00Z")]
+    public void Resolve_TimeEitherSideOfAClockChange_IsUnmoved(
+        string local, string expectedUtc)
+    {
+        // Arrange
+        var resolver = ResolverAt("2026-01-01T00:00:00Z");
+
+        // Act
+        var result = resolver.Resolve(Wall(local));
+
+        // Assert
+        Assert.Equal(Instant(expectedUtc), result.Value);
+    }
+
+    private static LocalTimeResolver ResolverIn(string zoneId, string utcNow) =>
+        new(TimeZoneInfo.FindSystemTimeZoneById(zoneId), new FakeTimeProvider(Instant(utcNow)));
+
     private static LocalTimeResolver ResolverAt(string utcNow) =>
-        new(Jerusalem, new FakeTimeProvider(Instant(utcNow)));
+        ResolverIn("Asia/Jerusalem", utcNow);
 
     private static DateTime Wall(string local) =>
         DateTime.Parse(local, CultureInfo.InvariantCulture);

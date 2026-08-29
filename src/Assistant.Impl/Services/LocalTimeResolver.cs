@@ -19,7 +19,16 @@ internal sealed class LocalTimeResolver(TimeZoneInfo zone, TimeProvider timeProv
     public Result<DateTimeOffset> Resolve(DateTime local)
     {
         var wall = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
-        var instant = new DateTimeOffset(wall, zone.GetUtcOffset(wall)).ToUniversalTime();
+        // Falling back always lowers the offset, so the larger of an ambiguous reading's two
+        // offsets is its first occurrence. GetUtcOffset and ConvertTimeToUtc both hand back the
+        // second. A reading inside a spring-forward gap needs no such handling: GetUtcOffset
+        // returns the offset in force before the gap, which names the same instant as the same
+        // reading past it, whatever the gap's width.
+        var offset = zone.IsAmbiguousTime(wall)
+            ? zone.GetAmbiguousTimeOffsets(wall).Max()
+            : zone.GetUtcOffset(wall);
+
+        var instant = new DateTimeOffset(wall, offset).ToUniversalTime();
         var now = timeProvider.GetUtcNow();
 
         if (instant < now - PastTolerance)
