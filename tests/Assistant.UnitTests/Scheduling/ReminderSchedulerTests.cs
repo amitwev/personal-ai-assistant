@@ -42,7 +42,8 @@ public sealed class ReminderSchedulerTests
 
     /// <summary>
     /// A <see cref="TimeProvider"/> that forwards to a <see cref="FakeTimeProvider"/> but also
-    /// signals the moment something first calls <see cref="CreateTimer"/>.
+    /// signals once the inner provider has registered the timer passed to
+    /// <see cref="CreateTimer"/>.
     /// </summary>
     /// <remarks>
     /// <see cref="Microsoft.Extensions.Hosting.BackgroundService.StartAsync"/> dispatches
@@ -74,8 +75,9 @@ public sealed class ReminderSchedulerTests
         /// <inheritdoc/>
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
+            var timer = inner.CreateTimer(callback, state, dueTime, period);
             _armed.TrySetResult();
-            return inner.CreateTimer(callback, state, dueTime, period);
+            return timer;
         }
     }
 

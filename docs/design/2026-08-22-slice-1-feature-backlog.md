@@ -458,6 +458,8 @@ told. `ChatMessage` + `chat_messages` arrive here for the conversation window.
 — already exists and is already exercised by `TelegramSettings`. F14 inherits only
 `appsettings.{Environment}.json` and validation for the settings types slice 1 still needs, not
 the mechanism itself.
+**Reduced by CI:** `.github/workflows/ci.yml` already exists and runs gitleaks, the build, and
+both test suites. F14 inherits only the eval workflow and the image-publishing job (spec §11.6).
 
 **Container packaging for the worker** — spec §8, §11.6 · **unscheduled**
 There is no `compose.yaml` and no worker `Dockerfile` in this repository, and there never has
@@ -469,7 +471,7 @@ restart policy. F14 already lists `Dockerfile` and `compose.yaml` among its cont
 not a competing feature number — it is a flag that the gap F5b found is real and directly
 observed, not merely anticipated, and worth tracking on its own until F14 is planned.
 
-**Continuous integration** — spec §9 step 1, §11.2, §11.3 · **unscheduled**
+**Continuous integration** — spec §9 step 1, §11.2, §11.3 · **done**
 There is no `.github/workflows` directory in this repository, and there never has been — no pull
 request has ever been checked by a machine. Spec §9 step 1 lists "GitHub Actions workflow running
 them" as part of the very first implementation step, before any code was written; it was skipped.
@@ -480,6 +482,66 @@ needs: restore, build with warnings as errors, architecture tests, unit tests, i
 gitleaks. F14 already lists `.github/workflows/ci.yml` among its contents, so this is not a
 competing feature number — it is a flag that a promise the documents already make is unbacked,
 which is worse than not having made it.
+*Settled at CI:*
+- **The architecture tests do not get their own stage**, unlike the four stages §11.3 lists
+  around them. They live inside `tests/Assistant.UnitTests/Architecture/`, in the same assembly
+  as every other unit test, so a separate stage would mean two filtered runs of one assembly —
+  and `dotnet test --filter` exits `0` when a filter matches nothing, so a typo in an inverse
+  filter would turn an entire stage into a silent no-op. A single unfiltered
+  `dotnet test tests/Assistant.UnitTests/Assistant.UnitTests.csproj` cannot skip anything that
+  way. §11.3's stage list predates the test projects; the architecture tests run in the stage
+  they physically live in.
+- **gitleaks runs first in `ci.yml`, not last as §11.3 lists it.** A last-place gitleaks step
+  never runs at all if the build fails first, so a pull request that both leaks a secret and
+  fails to compile would raise no secret warning. And a leaked credential is already leaked the
+  moment it reaches a public repository — ordering only controls how fast the owner is told to
+  revoke it, roughly thirty seconds first-in-job against several minutes last-in-job.
+- **`ci.yml` narrows spec §11.2's "every push and pull request" to every pull request plus every
+  push to `main`, not every push.** A feature-branch push almost always already has an open pull
+  request, which the `pull_request` trigger already scans, so covering every push as well would
+  run the whole suite twice for the same commit. This sits in tension with the bullet above:
+  gitleaks was moved first because time-to-notification matters enough to reorder the whole file,
+  yet this narrowing accepts an unbounded delay for a push to a branch with no pull request open
+  yet. It is still the right trade — a leaked credential is public the moment it is pushed either
+  way, and the pull request scan catches it before merge.
+- **The official gitleaks Docker image, not `gitleaks/gitleaks-action`.** The action gates on a
+  `GITLEAKS_LICENSE` for organisations; free for a personal repository today, but that is a third
+  party's licensing decision sitting inside this build, and the image carries no such gate.
+- **gitleaks was pinned to `v8.30.1`, invoked with the `git` subcommand** — `detect` was
+  confirmed absent from this line of releases by running `--help` against the pinned image.
+  Running it against the repository's full history found no findings, so no `.gitleaks.toml` was
+  created.
+- **Whether the container hit "dubious ownership" against this repository's bind mount:
+  no — the local run showed no such error, so no `--user` flag was added.** A clean result on a
+  non-Linux development machine does not settle this — Docker Desktop's bind mount ownership does
+  not reproduce what a Linux CI runner's checkout looks like to a container running as root, so
+  the real test was the workflow's first run rather than a local one. That run has since
+  happened: gitleaks passed on `ubuntu-latest` with no dubious-ownership error, confirming the
+  `--user` flag was correctly left out.
+- **The workflow's first run caught a race in `ReminderSchedulerTests` that had passed
+  locally every time.** The test's `ArmSignallingTimeProvider` signalled `Armed` before its
+  inner `FakeTimeProvider.CreateTimer` call had registered the timer, so the fake clock could
+  be advanced before anything was listening and that advance was silently lost; an idle
+  development machine almost never loses that race, a busier CI runner does. The fix was to
+  the test's own harness — reordering the signal to fire after registration — not to
+  `ReminderScheduler`.
+- **Each of the three failure-detecting stages was proven to go red on its own throwaway
+  branch, and none of the three branches was merged.** `ci-break-gitleaks` tripped
+  `Scan every commit for secrets` — not with the AWS example key the task brief named, since
+  gitleaks's own default ruleset allowlists `AKIAIOSFODNN7EXAMPLE`, AWS's own published
+  documentation example, so the branch was repeated with a random value that tripped the
+  `generic-api-key` rule instead. `ci-break-warnings` added an unused field,
+  not a constructor parameter, to `TaskService` in `Assistant.Impl` and tripped
+  `Build with warnings as errors` on `CS0169`, with `Restore` staying green ahead of it — the
+  F7 `CS9113` mistake was not repeated. `ci-break-test` flipped one assertion in
+  `ScheduledJobBaseTests` and tripped `Unit and architecture tests`, naming the one test that
+  failed, with the build staying green ahead of it.
+- **`AKIAIOSFODNN7EXAMPLE`, quoted above, is now permanent tracked history — the plan document
+  describing the `ci-break-gitleaks` branch quotes it too, so deleting that branch does not
+  remove it.** This repository is green today only because gitleaks v8.30.1's default ruleset
+  allowlists that exact key; whoever bumps the pinned version should re-run the scan before
+  assuming it still passes — a version whose allowlist differs would turn every pull request red
+  until a `.gitleaks.toml` is added.
 
 ---
 
