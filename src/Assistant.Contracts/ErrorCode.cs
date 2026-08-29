@@ -19,4 +19,15 @@ public enum ErrorCode
     /// The task has no due time, so there is no reminder to act on.
     /// </summary>
     DueTimeMissing,
+
+    /// <summary>
+    /// The requested time is more than a minute in the past.
+    /// </summary>
+    DueTimeInPast,
+
+    /// <summary>
+    /// The requested time is more than two years ahead, which is far more likely a misread
+    /// year than a real intention.
+    /// </summary>
+    DueTimeTooFarAhead,
 }
