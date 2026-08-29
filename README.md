@@ -25,8 +25,9 @@ Self-hosted on a €5 VPS. Your data never leaves your machine.
 - **Single user.** There are no accounts and no tenancy: one whitelisted
   Telegram ID, and every other sender is ignored. This is the point, not a
   gap — nobody operates a server that can read your tasks.
-- **One timezone.** Currently fixed to `Asia/Jerusalem`. Making this
-  configurable is a small change and a welcome pull request.
+- **One timezone.** The assistant runs in one zone, set by
+  `TimeSettings__IanaTimeZone` and defaulting to `Asia/Jerusalem`. What
+  does not exist is a zone per user.
 
 ## Contributing
 

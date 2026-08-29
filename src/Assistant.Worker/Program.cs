@@ -18,11 +18,11 @@ if (args.Contains("send-test-message"))
     return;
 }
 
-builder.Services.AddAssistantRepository(
-    builder.Configuration.Read<DatabaseSettings>().ConnectionString);
-builder.Services.AddAssistantServices();
-builder.Services.AddAssistantScheduler();
-builder.Services.AddAssistantListener();
+builder.Services.AddAssistantRepository(builder.Configuration.Read<DatabaseSettings>().ConnectionString)
+                .AddAssistantServices()
+                .AddAssistantTime(builder.Configuration.Read<TimeSettings>())
+                .AddAssistantScheduler()
+                .AddAssistantListener();
 
 var host = builder.Build();
 await host.Services.MigrateAssistantDatabaseAsync();

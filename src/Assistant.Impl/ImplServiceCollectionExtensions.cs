@@ -74,4 +74,25 @@ public static class ImplServiceCollectionExtensions
         services.AddHostedService<TelegramListener>();
         return services;
     }
+
+    /// <summary>
+    /// Registers the resolver that turns local wall-clock times into instants.
+    /// </summary>
+    /// <param name="services">The container to add registrations to.</param>
+    /// <param name="settings">
+    /// Validated time configuration. Read it with <c>IConfiguration.Read</c> so an unknown zone
+    /// stops the host here, while it is composing, rather than at the first captured task.
+    /// </param>
+    /// <returns>The same <paramref name="services"/>, for chaining.</returns>
+    /// <remarks>
+    /// Requires <c>AddAssistantServices</c> for the <see cref="TimeProvider"/> the past and
+    /// future guards read.
+    /// </remarks>
+    public static IServiceCollection AddAssistantTime(
+        this IServiceCollection services, TimeSettings settings)
+    {
+        services.AddSingleton(TimeZoneInfo.FindSystemTimeZoneById(settings.IanaTimeZone));
+        services.AddSingleton<ILocalTimeResolver, LocalTimeResolver>();
+        return services;
+    }
 }

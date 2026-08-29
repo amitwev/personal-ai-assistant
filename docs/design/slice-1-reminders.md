@@ -56,7 +56,7 @@ This inverts the roadmap in the original spec, where proactive reminders were Ph
 | Hosting | Cheap VPS (Hetzner/DO), Docker Compose | Proactive push requires genuine 24/7 uptime |
 | Host type | Worker Service (Generic Host), no web server | No inbound HTTP in slice 1 |
 | Telegram transport | Long polling | No public domain, cert, or open port; self-reconnecting |
-| Timezone | `Asia/Jerusalem`, fixed for slice 1 | YAGNI. Configurable zones are a later slice (§12.7) |
+| Timezone | Configured IANA identifier | Bound at startup so a typo fails fast. Default is `Asia/Jerusalem`. |
 | HTTP clients | Refit for every HTTP API this project calls itself | Typed interfaces, declarative, WireMock-friendly (§12.3) |
 | Documentation | XML doc comments on every public member, enforced by the build | §12.1 |
 | Mapping | Extension methods only | §12.2 |
@@ -338,7 +338,7 @@ The current local time is injected on every call:
 
 Without this the model has no basis for resolving "tomorrow" and will guess.
 
-**Jerusalem is fixed in slice 1**, in the prompt and in `LocalTimeResolver`. This is a deliberate YAGNI call: making the zone configurable is a small change (§12.7) and there is no second user waiting for it. The README states the limitation plainly rather than implying multi-zone support that does not exist.
+**The zone comes from configuration**, default `Asia/Jerusalem`, injected into both the prompt and `LocalTimeResolver`. This was originally deferred (§12.7) but brought forward during F8 because a hardcoded zone would block any contributor outside Israel in their first five minutes (spec §11).
 
 ### 5.3 Tools
 
@@ -353,14 +353,16 @@ Each is one `IAssistantTool` implementation with a single responsibility and a s
 
 ### 5.4 Time contract
 
-The model returns an absolute local ISO string (`2026-08-17T10:00:00`, no offset). `LocalTimeResolver` — which takes the configured IANA zone, never a hardcoded one — converts local → UTC, and the service applies guard clauses before anything is persisted:
+The model returns an absolute local ISO string (`2026-08-17T10:00:00`, no offset). `LocalTimeResolver` — which takes the configured IANA zone, never a hardcoded one — converts local → UTC, and `Resolve` applies the guard clauses itself, returning a `Result<DateTimeOffset>` whose caller turns a failure into a question to the user before anything is persisted:
 
 | Condition | Behaviour |
 | :--- | :--- |
 | More than one minute in the past | Do not store silently; ask the user for clarification |
 | More than two years in the future | Almost certainly a hallucinated year; ask |
-| Non-existent local time (spring-forward gap) | `TimeZoneInfo.IsInvalidTime` → shift forward past the gap |
-| Ambiguous local time (fall-back hour) | `TimeZoneInfo.IsAmbiguousTime` → take the first occurrence |
+| Non-existent local time (spring-forward gap) | Resolves to the instant just past the gap — in Jerusalem's one-hour gap, 02:30 becomes 03:30 — needing no branch (`GetUtcOffset` returns the pre-gap offset for a time inside it) |
+| Ambiguous local time (fall-back hour) | `TimeZoneInfo.IsAmbiguousTime` → take the first occurrence (`GetUtcOffset` defaults to the second) |
+
+Both `TimeZoneInfo.ConvertTimeToUtc` and `TimeZoneInfo.GetUtcOffset` resolve an ambiguous local time to its second occurrence, standard time, so the first occurrence this spec requires has to be selected by hand — `GetAmbiguousTimeOffsets(...).Max()` is always the first.
 
 Absolute-from-model rather than relative is deliberate: resolving relative expressions in C# would mean writing the natural-language date parser the LLM was chosen to replace. The guard clauses provide safety without the parser.
 
@@ -869,6 +871,6 @@ one. It is a review rule, checked by reading.
 
 | Item | Trigger |
 | :--- | :--- |
-| Configurable timezone in the prompt and resolver | A second user, or a trip that makes it personally annoying |
+| Per-user timezone, in the prompt and the resolver | A second user, or a trip that makes it personally annoying |
 | Localisation of bot messages | Same |
 | Analyzer package beyond the built-in rules | When style debates start costing review time |
