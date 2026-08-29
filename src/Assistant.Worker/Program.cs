@@ -21,6 +21,7 @@ if (args.Contains("send-test-message"))
 builder.Services.AddAssistantRepository(
     builder.Configuration.Read<DatabaseSettings>().ConnectionString);
 builder.Services.AddAssistantServices();
+builder.Services.AddAssistantTime(builder.Configuration.Read<TimeSettings>());
 builder.Services.AddAssistantScheduler();
 builder.Services.AddAssistantListener();
 
