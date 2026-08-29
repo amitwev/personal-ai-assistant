@@ -417,9 +417,44 @@ more than a minute in the past, more than two years ahead, DST spring-forward ga
 ambiguity.
 *Tests:* a table over the DST boundaries and each guard.
 *Settled at F8:*
-- **The zone comes from configuration, not a literal.** `TimeSettings` binds `TimeSettings:IanaTimeZone` and validates it at startup.
-- **Fall-back ambiguity resolves to the first occurrence.** `TimeZoneInfo.GetUtcOffset` defaults to the second, which contradicts spec §5.4; the code takes the maximum of the offsets manually.
-- **The spring-forward gap resolves itself.** `GetUtcOffset` returns the offset in force before the gap, which satisfies the spec without explicit code.
+- **The guards live in the resolver, not a service.** `LocalTimeResolver.Resolve` checks the past
+  and future bounds itself and returns the failure on a `Result<DateTimeOffset>`. Spec §5.4 said
+  a service would apply them, but F10 is the first feature with a service — `ITaskService` — that
+  could even hold them.
+- **`Result<T>` joined the non-generic `Result` in `Contracts`.** Both stay: most operations in
+  this project succeed without producing a value, and giving them a meaningless type argument
+  would read worse than having two types.
+- **`Resolve` takes a `DateTime`, not the model's ISO string.** The parse from
+  `2026-08-17T10:00:00` happens where F9's `CreateTaskRequest` lands it — free, from
+  `System.Text.Json`, which already parses that format into a `DateTime` without any code of
+  this project's own.
+- **The spring-forward gap needs no branch.** `GetUtcOffset` returns the pre-transition offset
+  `o` for a reading `L` inside the gap, and shifting the reading past the gap by the gap's width
+  `D` names the same instant: `(L + D) - (o + D) == L - o` for any `D`, because the two shifts
+  cancel. This was probed in two zones before the code was written, and
+  `LocalTimeResolverTests` holds it in both — Jerusalem's hour-wide gap and Lord Howe's
+  half-hour one. Recorded here so the next reader does not add a branch the algebra already
+  makes unnecessary.
+- **Both `ConvertTimeToUtc` and `GetUtcOffset` resolve an ambiguous time to the second
+  occurrence.** Spec §5.4 requires the first, so it is selected by hand:
+  `GetAmbiguousTimeOffsets(wall).Max()` is always the larger of the two offsets, and so the
+  first occurrence, because falling back only ever lowers the offset.
+- **Tests run against `Australia/Lord_Howe` as well as the configured zone.** Jerusalem's
+  spring-forward gap and its offset change are both exactly one hour, so a resolver that
+  hardcodes a one-hour shift instead of reading the actual transition would still pass every
+  Jerusalem case. Lord Howe's half-hour gap is the only fixture that can catch it.
+- **The zone is configuration, not code.** `TimeSettings.IanaTimeZone` binds
+  `TimeSettings:IanaTimeZone`, defaults to `Asia/Jerusalem` in `appsettings.json`, and is
+  validated with `TimeZoneInfo.FindSystemTimeZoneById` at startup, so a typo in the identifier
+  fails fast instead of surfacing the first time a reminder is due.
+- **A three-way spec contradiction was found and ruled.** §2 and §12.7 called the zone fixed for
+  slice 1; §5.4 and §11.4 said it is bound from configuration and never a literal. Ruled for
+  §5.4 and §11.4: two sections, agreeing in detail, and §11.4 explicitly governs every mention
+  of Jerusalem in the document. §2 and §12.7 are corrected to match; per-user zones stay
+  deferred.
+- **No current-local-time member on the interface.** `ILocalTimeResolver` only resolves a given
+  reading; F9 adds a member for the current local time when the system prompt needs one to
+  state "now" in the user's zone.
 
 **F9 · Send to the model and get a tool call** — spec §5.2, §5.3, §12.3
 `IChatClient`, `IAnthropicApi` via Refit, the system prompt carrying current local time, and
