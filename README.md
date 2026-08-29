@@ -25,8 +25,9 @@ Self-hosted on a €5 VPS. Your data never leaves your machine.
 - **Single user.** There are no accounts and no tenancy: one whitelisted
   Telegram ID, and every other sender is ignored. This is the point, not a
   gap — nobody operates a server that can read your tasks.
-- **One timezone.** Currently fixed to `Asia/Jerusalem`. Making this
-  configurable is a small change and a welcome pull request.
+- **One timezone.** The assistant expects you to live in one timezone, which
+  defaults to `Asia/Jerusalem`. You can configure this in `.env` or
+  `appsettings.json`, but there is no multi-zone support for a single user.
 
 ## Contributing
 

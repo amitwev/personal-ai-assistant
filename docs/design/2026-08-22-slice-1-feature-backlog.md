@@ -411,11 +411,15 @@ polling.
   wholesale. Either is a trap a maintainer could reach for without noticing; hand-rolling three
   fixed replacements is immune by construction, because it can only ever touch `&`, `<` and `>`.
 
-**F8 · Resolve local time** — spec §5.4
+**F8 · Resolve local time** — spec §5.4 · **done**
 `ILocalTimeResolver` + `LocalTimeResolver` over the configured IANA zone, and the guard clauses:
 more than a minute in the past, more than two years ahead, DST spring-forward gap, fall-back
 ambiguity.
 *Tests:* a table over the DST boundaries and each guard.
+*Settled at F8:*
+- **The zone comes from configuration, not a literal.** `TimeSettings` binds `TimeSettings:IanaTimeZone` and validates it at startup.
+- **Fall-back ambiguity resolves to the first occurrence.** `TimeZoneInfo.GetUtcOffset` defaults to the second, which contradicts spec §5.4; the code takes the maximum of the offsets manually.
+- **The spring-forward gap resolves itself.** `GetUtcOffset` returns the offset in force before the gap, which satisfies the spec without explicit code.
 
 **F9 · Send to the model and get a tool call** — spec §5.2, §5.3, §12.3
 `IChatClient`, `IAnthropicApi` via Refit, the system prompt carrying current local time, and
