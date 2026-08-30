@@ -9,8 +9,8 @@ namespace Assistant.Impl.Ai;
 /// <param name="clock">Supplies the current time and the zone it is read in.</param>
 /// <remarks>
 /// The zone is read from <see cref="ILocalTimeResolver.ZoneId"/> rather than named as a literal,
-/// and it appears twice in the built text (decision 3, above) so that editing either mention
-/// into a hardcoded zone leaves the other visibly disagreeing with it.
+/// and it appears twice in the built text so that editing either mention into a hardcoded zone
+/// leaves the other visibly disagreeing with it.
 /// </remarks>
 internal sealed class SystemPrompt(ILocalTimeResolver clock)
 {
