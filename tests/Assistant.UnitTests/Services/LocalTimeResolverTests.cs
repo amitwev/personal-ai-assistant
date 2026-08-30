@@ -208,6 +208,41 @@ public sealed class LocalTimeResolverTests
         Assert.Equal(Instant(expectedUtc), result.Value);
     }
 
+    /// <summary>
+    /// When the current instant is read
+    /// Then it carries the offset in force in the configured zone at that instant.
+    /// </summary>
+    [Fact]
+    public void CurrentLocalTime_AnyInstant_CarriesTheZonesOffsetAtThatInstant()
+    {
+        // Arrange
+        var resolver = ResolverAt("2026-08-16T20:40:00Z");
+
+        // Act
+        var now = resolver.CurrentLocalTime;
+
+        // Assert
+        Assert.Equal(Instant("2026-08-16T20:40:00Z"), now);
+        Assert.Equal(TimeSpan.FromHours(3), now.Offset);
+    }
+
+    /// <summary>
+    /// When the zone identifier is read
+    /// Then it is the identifier the resolver was constructed with.
+    /// </summary>
+    [Fact]
+    public void ZoneId_AnyResolver_IsTheConfiguredZonesIdentifier()
+    {
+        // Arrange
+        var resolver = ResolverIn("Australia/Lord_Howe", "2026-08-16T20:40:00Z");
+
+        // Act
+        var zoneId = resolver.ZoneId;
+
+        // Assert
+        Assert.Equal("Australia/Lord_Howe", zoneId);
+    }
+
     private static LocalTimeResolver ResolverIn(string zoneId, string utcNow) =>
         new(TimeZoneInfo.FindSystemTimeZoneById(zoneId), new FakeTimeProvider(Instant(utcNow)));
 

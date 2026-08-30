@@ -14,6 +14,23 @@ namespace Assistant.Interfaces;
 public interface ILocalTimeResolver
 {
     /// <summary>
+    /// The current instant, expressed as a wall-clock reading in the configured zone.
+    /// </summary>
+    /// <value>
+    /// Read fresh from the injected clock on every access, so a caller driving a
+    /// <c>FakeTimeProvider</c> sees an advance without re-resolving anything.
+    /// </value>
+    DateTimeOffset CurrentLocalTime { get; }
+
+    /// <summary>
+    /// The IANA identifier of the zone every wall-clock time on this assistant is read in.
+    /// </summary>
+    /// <value>
+    /// The same identifier <c>TimeSettings.IanaTimeZone</c> was bound from at startup.
+    /// </value>
+    string ZoneId { get; }
+
+    /// <summary>
     /// Resolves a wall-clock time in the configured zone to the instant it names.
     /// </summary>
     /// <param name="local">
