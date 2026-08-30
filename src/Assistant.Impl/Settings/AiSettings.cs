@@ -10,7 +10,7 @@ namespace Assistant.Impl.Settings;
 /// One provider serves the whole assistant. Unlike <see cref="TelegramSettings.BaseUrl"/>,
 /// <see cref="BaseUrl"/> here is required: there is no single "the" chat-completions provider
 /// the way there is a single real Telegram API, so a value must always be supplied, and
-/// <c>appsettings.json</c> ships OpenRouter's address as a changeable default (decision 2).
+/// <c>appsettings.json</c> ships OpenRouter's address as a changeable default.
 /// </remarks>
 public sealed class AiSettings : IValidatableConfig
 {
