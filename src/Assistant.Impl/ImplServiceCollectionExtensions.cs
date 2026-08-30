@@ -1,3 +1,7 @@
+using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Assistant.Impl.Ai;
 using Assistant.Impl.Scheduling;
 using Assistant.Impl.Services;
 using Assistant.Impl.Services.Jobs;
@@ -5,6 +9,7 @@ using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
+using Refit;
 using Telegram.Bot;
 
 namespace Assistant.Impl;
@@ -97,7 +102,7 @@ public static class ImplServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the chat-completions endpoint's settings.
+    /// Registers the AI client the assistant reaches for an answer.
     /// </summary>
     /// <param name="services">The container to add registrations to.</param>
     /// <param name="settings">
@@ -107,15 +112,30 @@ public static class ImplServiceCollectionExtensions
     /// </param>
     /// <returns>The same <paramref name="services"/>, for chaining.</returns>
     /// <remarks>
-    /// Registers only <see cref="AiSettings"/> for now; the chat-completions client itself is
-    /// added to this method's body once there is something to build it from
-    /// (<c>IChatCompletionsApi</c>, <c>SystemPrompt</c>). This method's signature, and the
-    /// settings registration above, do not change when that happens — only the body grows.
+    /// Requires <c>AddAssistantTime</c> for the <see cref="ILocalTimeResolver"/> the system
+    /// prompt reads the current time from — the reason this method sits after
+    /// <c>AddAssistantTime</c> in <c>Program.cs</c>'s chain.
     /// </remarks>
     public static IServiceCollection AddAssistantAi(
         this IServiceCollection services, AiSettings settings)
     {
         services.AddSingleton(settings);
+        services.AddSingleton<SystemPrompt>();
+        services.AddRefitGeneratedClient<IAiApi>(new RefitSettings
+        {
+            ContentSerializer = new SystemTextJsonContentSerializer(new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            }),
+        })
+        .ConfigureHttpClient(http =>
+        {
+            http.BaseAddress = new Uri(settings.BaseUrl);
+            http.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", settings.ApiKey);
+        });
+        services.AddScoped<IAiClient, AiClient>();
         return services;
     }
 }

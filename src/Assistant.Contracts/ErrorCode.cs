@@ -30,4 +30,14 @@ public enum ErrorCode
     /// year than a real intention.
     /// </summary>
     DueTimeTooFarAhead,
+
+    /// <summary>
+    /// The chat model could not be reached, or it responded with an error.
+    /// </summary>
+    ModelUnavailable,
+
+    /// <summary>
+    /// The chat model was reached but returned no usable answer.
+    /// </summary>
+    ModelReturnedNoAnswer,
 }

@@ -24,6 +24,9 @@ public sealed class WireMockFixture : IAsyncLifetime
     private static readonly Guid DrainedUpdatesMapping =
         new("f7000000-0000-0000-0000-000000000002");
 
+    private static readonly Guid AiMapping =
+        new("f9a00000-0000-0000-0000-000000000001");
+
     private readonly HttpClient _http = new();
 
     /// <summary>
@@ -76,7 +79,7 @@ public sealed class WireMockFixture : IAsyncLifetime
     /// <returns>A task that completes once the request log is empty and any seeded mapping is gone.</returns>
     public async Task ResetAsync()
     {
-        foreach (var id in new[] { PendingUpdatesMapping, DrainedUpdatesMapping })
+        foreach (var id in new[] { PendingUpdatesMapping, DrainedUpdatesMapping, AiMapping })
         {
             (await _http.DeleteAsync($"{Url}/__admin/mappings/{id}")).Dispose();
         }
@@ -97,6 +100,22 @@ public sealed class WireMockFixture : IAsyncLifetime
             .Where(entry => entry.Request.Path.EndsWith("/sendMessage", StringComparison.Ordinal)
                             && entry.Request.Method == "POST")
             .Select(entry => JsonSerializer.Deserialize<SendMessagePayload>(entry.Request.Body)!)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Returns the chat-endpoint requests the stub received, in order.
+    /// </summary>
+    /// <returns>One payload per captured request.</returns>
+    public async Task<IReadOnlyList<AiRequestPayload>> AiRequestsAsync()
+    {
+        var entries = await _http.GetFromJsonAsync<List<AdminLogEntry>>($"{Url}/__admin/requests")
+                      ?? [];
+
+        return entries
+            .Where(entry => entry.Request.Path.EndsWith("/chat/completions", StringComparison.Ordinal)
+                            && entry.Request.Method == "POST")
+            .Select(entry => JsonSerializer.Deserialize<AiRequestPayload>(entry.Request.Body)!)
             .ToList();
     }
 
@@ -128,12 +147,52 @@ public sealed class WireMockFixture : IAsyncLifetime
 
         var nextOffset = updates.Max(u => u.UpdateId) + 1;
 
-        await PutMappingAsync(PendingUpdatesMapping, priority: 10, bodyPattern: null,
-            result: pending, delayMs: null);
+        await PutMappingAsync(PendingUpdatesMapping, "/bot*/getUpdates", priority: 10,
+            bodyPattern: null, statusCode: 200,
+            responseBody: new JsonObject { ["ok"] = true, ["result"] = pending }, delayMs: null);
 
-        await PutMappingAsync(DrainedUpdatesMapping, priority: 1,
-            bodyPattern: $"*\"offset\":{nextOffset}*", result: new JsonArray(), delayMs: 1000);
+        await PutMappingAsync(DrainedUpdatesMapping, "/bot*/getUpdates", priority: 1,
+            bodyPattern: $"*\"offset\":{nextOffset}*", statusCode: 200,
+            responseBody: new JsonObject { ["ok"] = true, ["result"] = new JsonArray() },
+            delayMs: 1000);
     }
+
+    /// <summary>
+    /// Makes the stub answer the next chat request with the given answer text.
+    /// </summary>
+    /// <param name="answer">The model's answer.</param>
+    /// <returns>A task that completes once the mapping is installed.</returns>
+    public Task SeedAiAnswerAsync(string answer) =>
+        PutMappingAsync(AiMapping, "/chat/completions", priority: 1,
+            bodyPattern: null, statusCode: 200,
+            responseBody: new JsonObject
+            {
+                ["choices"] = new JsonArray(new JsonObject
+                {
+                    ["message"] = new JsonObject { ["role"] = "assistant", ["content"] = answer },
+                }),
+            },
+            delayMs: null);
+
+    /// <summary>
+    /// Makes the stub answer the next chat request with a server error.
+    /// </summary>
+    /// <returns>A task that completes once the mapping is installed.</returns>
+    public Task SeedAiFailureAsync() =>
+        PutMappingAsync(AiMapping, "/chat/completions", priority: 1,
+            bodyPattern: null, statusCode: 500,
+            responseBody: new JsonObject { ["error"] = "stubbed provider failure" },
+            delayMs: null);
+
+    /// <summary>
+    /// Makes the stub answer the next chat request with no candidate answers.
+    /// </summary>
+    /// <returns>A task that completes once the mapping is installed.</returns>
+    public Task SeedAiNoAnswerAsync() =>
+        PutMappingAsync(AiMapping, "/chat/completions", priority: 1,
+            bodyPattern: null, statusCode: 200,
+            responseBody: new JsonObject { ["choices"] = new JsonArray() },
+            delayMs: null);
 
     /// <summary>
     /// Waits until the stub has received at least the given number of messages.
@@ -175,7 +234,8 @@ public sealed class WireMockFixture : IAsyncLifetime
     }
 
     private async Task PutMappingAsync(
-        Guid id, int priority, string? bodyPattern, JsonNode result, int? delayMs)
+        Guid id, string path, int priority, string? bodyPattern, int statusCode,
+        JsonObject responseBody, int? delayMs)
     {
         var request = new JsonObject
         {
@@ -184,7 +244,7 @@ public sealed class WireMockFixture : IAsyncLifetime
                 ["Matchers"] = new JsonArray(new JsonObject
                 {
                     ["Name"] = "WildcardMatcher",
-                    ["Pattern"] = "/bot*/getUpdates",
+                    ["Pattern"] = path,
                 }),
             },
             ["Methods"] = new JsonArray("POST"),
@@ -204,9 +264,9 @@ public sealed class WireMockFixture : IAsyncLifetime
 
         var response = new JsonObject
         {
-            ["StatusCode"] = 200,
+            ["StatusCode"] = statusCode,
             ["Headers"] = new JsonObject { ["Content-Type"] = "application/json" },
-            ["Body"] = new JsonObject { ["ok"] = true, ["result"] = result }.ToJsonString(),
+            ["Body"] = responseBody.ToJsonString(),
         };
 
         if (delayMs is not null)
@@ -267,3 +327,39 @@ public sealed record SendMessagePayload(
 /// <param name="ChatId">The chat the message appears to come from.</param>
 /// <param name="Text">The message body.</param>
 public sealed record InboundUpdate(int UpdateId, long ChatId, string Text);
+
+/// <summary>
+/// The body of a chat request, as the assistant sends it.
+/// </summary>
+/// <param name="Model">The requested model slug.</param>
+/// <param name="Messages">The conversation sent, system prompt first.</param>
+/// <param name="MaxTokens">The token limit sent with the request.</param>
+public sealed record AiRequestPayload(
+    [property: JsonPropertyName("model")] string Model,
+    [property: JsonPropertyName("messages")] IReadOnlyList<AiMessagePayload> Messages,
+    [property: JsonPropertyName("max_tokens")] int MaxTokens)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>Null when the request carried exactly the three expected fields.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
+
+/// <summary>
+/// One message within a captured chat request.
+/// </summary>
+/// <param name="Role">Who is speaking: <c>system</c> or <c>user</c>.</param>
+/// <param name="Content">What was said.</param>
+public sealed record AiMessagePayload(
+    [property: JsonPropertyName("role")] string Role,
+    [property: JsonPropertyName("content")] string Content)
+{
+    /// <summary>
+    /// Any field on the wire that this message does not name.
+    /// </summary>
+    /// <value>Null when the message carried exactly the two expected fields.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
