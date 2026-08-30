@@ -236,8 +236,11 @@ public sealed class LocalTimeResolverTests
         // Arrange
         var resolver = ResolverIn("Australia/Lord_Howe", "2026-08-16T20:40:00Z");
 
-        // Act & Assert
-        Assert.Equal("Australia/Lord_Howe", resolver.ZoneId);
+        // Act
+        var zoneId = resolver.ZoneId;
+
+        // Assert
+        Assert.Equal("Australia/Lord_Howe", zoneId);
     }
 
     private static LocalTimeResolver ResolverIn(string zoneId, string utcNow) =>
