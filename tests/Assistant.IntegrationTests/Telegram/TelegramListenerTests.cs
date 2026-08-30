@@ -16,6 +16,7 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
     private const string BotToken = "123456:TESTTOKEN";
     private const long OwnerChatId = 100200300L;
     private const long StrangerChatId = 999888777L;
+    private const string ModelAnswer = "Got it -- I will remind you.";
 
     private static readonly TimeSpan ReplyDeadline = TimeSpan.FromSeconds(10);
 
@@ -33,11 +34,17 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
         {
             BotToken = BotToken, OwnerChatId = OwnerChatId, BaseUrl = wireMock.Url,
         });
+        services.AddAssistantTime(new TimeSettings { IanaTimeZone = "Asia/Jerusalem" });
+        services.AddAssistantAi(new AiSettings
+        {
+            ApiKey = "test-key", BaseUrl = wireMock.Url, Model = "test-model", MaxTokens = 100,
+        });
         services.AddAssistantListener();
         _provider = services.BuildServiceProvider();
         _sut = _provider.GetServices<IHostedService>().Single();
 
         await wireMock.ResetAsync();
+        await wireMock.SeedAiAnswerAsync(ModelAnswer);
     }
 
     /// <inheritdoc/>
@@ -50,10 +57,10 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
     /// <summary>
     /// When the owner sends a message
     /// And the listener is running
-    /// Then a reply comes back carrying what they sent.
+    /// Then a reply comes back carrying the model's answer.
     /// </summary>
     [Fact]
-    public async Task Listener_OwnerSendsAMessage_RepliesWithTheirText()
+    public async Task Listener_OwnerSendsAMessage_RepliesWithTheModelsAnswer()
     {
         // Arrange
         await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "call the bank"));
@@ -63,7 +70,7 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
 
         // Assert
         var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
-        Assert.Equal("call the bank", sent[0].Text);
+        Assert.Equal(ModelAnswer, sent[0].Text);
     }
 
     /// <summary>
@@ -76,6 +83,13 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
     /// that nothing was sent to the stranger otherwise means waiting on a clock and
     /// hoping; putting the stranger first in the batch means that by the time the owner's
     /// reply arrives, the stranger's message has already been processed and skipped.
+    /// <para>
+    /// This test no longer checks the reply's exact text: with the reply now the model's
+    /// answer rather than an echo, that check duplicated
+    /// <see cref="Listener_OwnerSendsAMessage_RepliesWithTheModelsAnswer"/>, which spec §7.2
+    /// forbids. What this test alone proves is that the stranger's message produced no second
+    /// reply.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task Listener_StrangerSendsAMessage_OnlyTheOwnerIsAnswered()
@@ -90,7 +104,7 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
 
         // Assert
         var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
-        Assert.Equal("call the bank", Assert.Single(sent).Text);
+        Assert.Single(sent);
     }
 
     /// <summary>
