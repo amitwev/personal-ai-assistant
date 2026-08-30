@@ -16,6 +16,13 @@ internal sealed class LocalTimeResolver(TimeZoneInfo zone, TimeProvider timeProv
     private const int MaxYearsAhead = 2;
 
     /// <inheritdoc/>
+    public DateTimeOffset CurrentLocalTime =>
+        TimeZoneInfo.ConvertTime(timeProvider.GetUtcNow(), zone);
+
+    /// <inheritdoc/>
+    public string ZoneId => zone.Id;
+
+    /// <inheritdoc/>
     public Result<DateTimeOffset> Resolve(DateTime local)
     {
         var wall = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
