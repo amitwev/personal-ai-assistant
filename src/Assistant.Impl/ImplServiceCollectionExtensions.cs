@@ -95,4 +95,27 @@ public static class ImplServiceCollectionExtensions
         services.AddSingleton<ILocalTimeResolver, LocalTimeResolver>();
         return services;
     }
+
+    /// <summary>
+    /// Registers the chat-completions endpoint's settings.
+    /// </summary>
+    /// <param name="services">The container to add registrations to.</param>
+    /// <param name="settings">
+    /// Validated chat-model configuration. Read it with <c>IConfiguration.Read</c> so a missing
+    /// key or an unusable base address stops the host here, while it is composing, rather than at
+    /// the first message the owner sends.
+    /// </param>
+    /// <returns>The same <paramref name="services"/>, for chaining.</returns>
+    /// <remarks>
+    /// Registers only <see cref="AiSettings"/> for now; the chat-completions client itself is
+    /// added to this method's body once there is something to build it from
+    /// (<c>IChatCompletionsApi</c>, <c>SystemPrompt</c>). This method's signature, and the
+    /// settings registration above, do not change when that happens — only the body grows.
+    /// </remarks>
+    public static IServiceCollection AddAssistantAi(
+        this IServiceCollection services, AiSettings settings)
+    {
+        services.AddSingleton(settings);
+        return services;
+    }
 }
