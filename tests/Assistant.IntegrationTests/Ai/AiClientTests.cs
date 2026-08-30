@@ -1,3 +1,4 @@
+using Assistant.Contracts;
 using Assistant.Impl;
 using Assistant.Impl.Settings;
 using Assistant.IntegrationTests.Infrastructure;
@@ -24,6 +25,7 @@ public sealed class AiClientTests(WireMockFixture wireMock) : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddAssistantServices();
         services.AddAssistantTime(new TimeSettings { IanaTimeZone = "Asia/Jerusalem" });
         services.AddAssistantAi(new AiSettings
@@ -81,5 +83,41 @@ public sealed class AiClientTests(WireMockFixture wireMock) : IAsyncLifetime
         Assert.Equal("system", request.Messages[0].Role);
         Assert.Equal("user", request.Messages[1].Role);
         Assert.Equal("call the bank tomorrow at 10", request.Messages[1].Content);
+    }
+
+    /// <summary>
+    /// When the provider answers with a server error
+    /// And the model is asked
+    /// Then the call is refused as unavailable, not thrown.
+    /// </summary>
+    [Fact]
+    public async Task AskAsync_ProviderReturnsAServerError_IsRefusedAsUnavailable()
+    {
+        // Arrange
+        await wireMock.SeedAiFailureAsync();
+
+        // Act
+        var result = await _sut.AskAsync("call the bank tomorrow at 10", CancellationToken.None);
+
+        // Assert
+        Assert.Equal(ErrorCode.ModelUnavailable, result.Error);
+    }
+
+    /// <summary>
+    /// When the provider answers with no candidate messages
+    /// And the model is asked
+    /// Then the call is refused as having returned nothing.
+    /// </summary>
+    [Fact]
+    public async Task AskAsync_ProviderReturnsNoChoices_IsRefusedAsNoAnswer()
+    {
+        // Arrange
+        await wireMock.SeedAiNoAnswerAsync();
+
+        // Act
+        var result = await _sut.AskAsync("call the bank tomorrow at 10", CancellationToken.None);
+
+        // Assert
+        Assert.Equal(ErrorCode.ModelReturnedNoAnswer, result.Error);
     }
 }
