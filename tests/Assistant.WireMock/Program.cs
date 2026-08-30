@@ -9,6 +9,7 @@ using var server = WireMockServer.Start(new WireMockServerSettings
 });
 
 TelegramStubs.Install(server);
+AiStubs.Install(server);
 
 Console.WriteLine("Stub API listening on http://0.0.0.0:8080");
 
