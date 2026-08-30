@@ -71,7 +71,7 @@ The Worker applies them at startup by calling `MigrateAssistantDatabaseAsync` ex
 | `Assistant.Repository` | EF Core, DbContext, migrations | Interfaces, Models |
 | `Assistant.Impl` | Services, jobs, adapters | Interfaces, Contracts, Models |
 | `Assistant.Worker` | Composition root | everything |
-| `Assistant.WireMock` | Stub API server (Telegram today) run as the `wiremock` service in `compose.test.yaml`, port 58080 | nothing |
+| `Assistant.WireMock` | Stub API server (Telegram and the chat endpoint) run as the `wiremock` service in `compose.test.yaml`, port 58080 | nothing |
 
 `tests/Assistant.UnitTests/Architecture/` enforces this graph. If you change
 a project reference and the build goes red, the graph is the thing that is
