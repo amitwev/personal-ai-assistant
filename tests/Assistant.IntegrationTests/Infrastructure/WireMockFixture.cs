@@ -175,6 +175,38 @@ public sealed class WireMockFixture : IAsyncLifetime
             delayMs: null);
 
     /// <summary>
+    /// Makes the stub answer the next chat request with a call to the given tool.
+    /// </summary>
+    /// <param name="toolName">The tool the model calls.</param>
+    /// <param name="argumentsJson">The arguments JSON, exactly as the wire carries it.</param>
+    /// <returns>A task that completes once the mapping is installed.</returns>
+    public Task SeedAiToolCallAsync(string toolName, string argumentsJson) =>
+        PutMappingAsync(AiMapping, "/chat/completions", priority: 1,
+            bodyPattern: null, statusCode: 200,
+            responseBody: new JsonObject
+            {
+                ["choices"] = new JsonArray(new JsonObject
+                {
+                    ["message"] = new JsonObject
+                    {
+                        ["role"] = "assistant",
+                        ["content"] = null,
+                        ["tool_calls"] = new JsonArray(new JsonObject
+                        {
+                            ["id"] = "call_1",
+                            ["type"] = "function",
+                            ["function"] = new JsonObject
+                            {
+                                ["name"] = toolName,
+                                ["arguments"] = argumentsJson,
+                            },
+                        }),
+                    },
+                }),
+            },
+            delayMs: null);
+
+    /// <summary>
     /// Makes the stub answer the next chat request with a server error.
     /// </summary>
     /// <returns>A task that completes once the mapping is installed.</returns>
@@ -334,10 +366,12 @@ public sealed record InboundUpdate(int UpdateId, long ChatId, string Text);
 /// <param name="Model">The requested model slug.</param>
 /// <param name="Messages">The conversation sent, system prompt first.</param>
 /// <param name="MaxTokens">The token limit sent with the request.</param>
+/// <param name="Tools">Every tool definition offered to the model on this request.</param>
 public sealed record AiRequestPayload(
     [property: JsonPropertyName("model")] string Model,
     [property: JsonPropertyName("messages")] IReadOnlyList<AiMessagePayload> Messages,
-    [property: JsonPropertyName("max_tokens")] int MaxTokens)
+    [property: JsonPropertyName("max_tokens")] int MaxTokens,
+    [property: JsonPropertyName("tools")] IReadOnlyList<AiToolPayload> Tools)
 {
     /// <summary>
     /// Any field on the wire that this record does not name.
@@ -363,3 +397,38 @@ public sealed record AiMessagePayload(
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; init; }
 }
+
+/// <summary>
+/// One tool definition within a captured chat request.
+/// </summary>
+/// <param name="Type">Always <c>function</c> on the requests this project sends.</param>
+/// <param name="Function">The tool's name and description.</param>
+public sealed record AiToolPayload(
+    [property: JsonPropertyName("type")] string Type,
+    [property: JsonPropertyName("function")] AiFunctionPayload Function)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>Null when the tool carried exactly the two expected fields.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
+
+/// <summary>
+/// The name and description within one captured tool definition.
+/// </summary>
+/// <param name="Name">The tool's name.</param>
+/// <param name="Description">What the tool does.</param>
+public sealed record AiFunctionPayload(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("description")] string Description)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>Null when the function carried exactly the two expected fields.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
+

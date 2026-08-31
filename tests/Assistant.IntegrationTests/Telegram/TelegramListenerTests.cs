@@ -16,7 +16,12 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
     private const string BotToken = "123456:TESTTOKEN";
     private const long OwnerChatId = 100200300L;
     private const long StrangerChatId = 999888777L;
-    private const string ModelAnswer = "Got it -- I will remind you.";
+
+    private const string AcknowledgedButNotSavedYet =
+        "Got it -- I understood that as a task, but I cannot save it yet.";
+
+    private const string NotUnderstoodAsATask =
+        "I did not read that as a task. Try rephrasing it.";
 
     private static readonly TimeSpan ReplyDeadline = TimeSpan.FromSeconds(10);
 
@@ -44,7 +49,7 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
         _sut = _provider.GetServices<IHostedService>().Single();
 
         await wireMock.ResetAsync();
-        await wireMock.SeedAiAnswerAsync(ModelAnswer);
+        await wireMock.SeedAiToolCallAsync("create_task", """{"title":"call the bank"}""");
     }
 
     /// <inheritdoc/>
@@ -56,11 +61,11 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
 
     /// <summary>
     /// When the owner sends a message
-    /// And the listener is running
-    /// Then a reply comes back carrying the model's answer.
+    /// And the model calls create_task
+    /// Then the owner is told the task was understood but cannot be saved yet.
     /// </summary>
     [Fact]
-    public async Task Listener_OwnerSendsAMessage_RepliesWithTheModelsAnswer()
+    public async Task Listener_OwnerSendsAMessage_RepliesThatItUnderstoodTheTask()
     {
         // Arrange
         await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "call the bank"));
@@ -70,7 +75,7 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
 
         // Assert
         var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
-        Assert.Equal(ModelAnswer, sent[0].Text);
+        Assert.Equal(AcknowledgedButNotSavedYet, sent[0].Text);
     }
 
     /// <summary>
@@ -84,11 +89,10 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
     /// hoping; putting the stranger first in the batch means that by the time the owner's
     /// reply arrives, the stranger's message has already been processed and skipped.
     /// <para>
-    /// This test no longer checks the reply's exact text: with the reply now the model's
-    /// answer rather than an echo, that check duplicated
-    /// <see cref="Listener_OwnerSendsAMessage_RepliesWithTheModelsAnswer"/>, which spec §7.2
-    /// forbids. What this test alone proves is that the stranger's message produced no second
-    /// reply.
+    /// This test does not check the reply's exact text: that check duplicated
+    /// <see cref="Listener_OwnerSendsAMessage_RepliesThatItUnderstoodTheTask"/>, which spec
+    /// §7.2 forbids. What this test alone proves is that the stranger's message produced no
+    /// second reply.
     /// </para>
     /// </remarks>
     [Fact]
@@ -116,10 +120,6 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
     /// The only test in this suite that waits on wall-clock time, and it is worth the
     /// cost: a listener that fails to advance its offset is served the same update on
     /// every poll, and the stub answers an unadvanced poll with no delay at all.
-    /// Breaking the offset advance to confirm this test could fail measured 3704
-    /// replies inside the 3-second settle window, not two, so this cannot fail
-    /// marginally. A false pass would need the machine to make no progress for the
-    /// whole window.
     /// </remarks>
     [Fact]
     public async Task Listener_MessageAlreadyAnswered_DoesNotAnswerItAgain()
@@ -135,5 +135,25 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
 
         // Assert
         Assert.Single(await wireMock.SentMessagesAsync());
+    }
+
+    /// <summary>
+    /// When the model replies with prose instead of calling a tool
+    /// And the owner sent the message that produced it
+    /// Then the owner is told the message was not read as a task.
+    /// </summary>
+    [Fact]
+    public async Task Listener_ModelRepliesWithProse_TellsTheOwnerItWasNotReadAsATask()
+    {
+        // Arrange
+        await wireMock.SeedAiAnswerAsync("Sure, tell me more.");
+        await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "hello"));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
+        Assert.Equal(NotUnderstoodAsATask, sent[0].Text);
     }
 }

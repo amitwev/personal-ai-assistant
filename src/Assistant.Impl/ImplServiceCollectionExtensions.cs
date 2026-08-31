@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Assistant.Impl.Ai;
+using Assistant.Impl.Tools;
 using Assistant.Impl.Scheduling;
 using Assistant.Impl.Services;
 using Assistant.Impl.Services.Jobs;
@@ -121,6 +122,7 @@ public static class ImplServiceCollectionExtensions
     {
         services.AddSingleton(settings);
         services.AddSingleton<SystemPrompt>();
+        services.AddScoped<IAssistantTool, CreateTaskTool>();
         services.AddRefitGeneratedClient<IAiApi>(new RefitSettings
         {
             ContentSerializer = new SystemTextJsonContentSerializer(new JsonSerializerOptions

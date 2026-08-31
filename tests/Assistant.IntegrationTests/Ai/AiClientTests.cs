@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Assistant.Contracts;
 using Assistant.Impl;
 using Assistant.Impl.Settings;
@@ -42,35 +43,57 @@ public sealed class AiClientTests(WireMockFixture wireMock) : IAsyncLifetime
     public async Task DisposeAsync() => await _provider.DisposeAsync();
 
     /// <summary>
-    /// When the provider answers with a candidate message
+    /// When the provider calls a tool
     /// And the model is asked
-    /// Then its text comes back as the result's value.
+    /// Then the tool's name and raw arguments come back as the result's value.
     /// </summary>
     [Fact]
-    public async Task AskAsync_ProviderAnswers_ReturnsItsText()
+    public async Task AskAsync_ProviderCallsATool_ReturnsItsNameAndArguments()
     {
         // Arrange
-        await wireMock.SeedAiAnswerAsync("Noted -- I will remind you.");
+        await wireMock.SeedAiToolCallAsync("create_task", """{"title":"call the bank"}""");
 
         // Act
         var result = await _sut.AskAsync("call the bank tomorrow at 10", CancellationToken.None);
 
         // Assert
         Assert.True(result.IsSuccess);
-        Assert.Equal("Noted -- I will remind you.", result.Value);
+        Assert.Equal("create_task", result.Value!.Name);
+        Assert.Equal("""{"title":"call the bank"}""", result.Value.ArgumentsJson);
+    }
+
+    /// <summary>
+    /// When the provider calls create_task with a title and a due time
+    /// And the arguments are parsed as a CreateTaskRequest
+    /// Then both fields come back exactly as the model sent them.
+    /// </summary>
+    [Fact]
+    public async Task AskAsync_ProviderCallsCreateTask_ArgumentsParseAsACreateTaskRequest()
+    {
+        // Arrange
+        await wireMock.SeedAiToolCallAsync(
+            "create_task", """{"title":"call the bank","due_at_local":"2026-09-01T10:00:00"}""");
+
+        // Act
+        var result = await _sut.AskAsync("call the bank tomorrow at 10", CancellationToken.None);
+
+        // Assert
+        var request = JsonSerializer.Deserialize<CreateTaskRequest>(result.Value!.ArgumentsJson);
+        Assert.Equal("call the bank", request!.Title);
+        Assert.Equal("2026-09-01T10:00:00", request.DueAtLocal);
     }
 
     /// <summary>
     /// When the model is asked
     /// Then the system prompt is sent as the first message with role system
     /// And the owner's text is sent as the second message with role user
-    /// And the configured model and token limit go on the wire.
+    /// And the configured model, token limit and tool definition go on the wire.
     /// </summary>
     [Fact]
-    public async Task AskAsync_AnyText_PlacesThePromptAndTheModelCorrectlyOnTheWire()
+    public async Task AskAsync_AnyText_PlacesThePromptTheModelAndTheToolOnTheWire()
     {
         // Arrange
-        await wireMock.SeedAiAnswerAsync("Noted.");
+        await wireMock.SeedAiToolCallAsync("create_task", """{"title":"call the bank"}""");
 
         // Act
         await _sut.AskAsync("call the bank tomorrow at 10", CancellationToken.None);
@@ -83,6 +106,8 @@ public sealed class AiClientTests(WireMockFixture wireMock) : IAsyncLifetime
         Assert.Equal("system", request.Messages[0].Role);
         Assert.Equal("user", request.Messages[1].Role);
         Assert.Equal("call the bank tomorrow at 10", request.Messages[1].Content);
+        var tool = Assert.Single(request.Tools);
+        Assert.Equal("create_task", tool.Function.Name);
     }
 
     /// <summary>
@@ -119,5 +144,23 @@ public sealed class AiClientTests(WireMockFixture wireMock) : IAsyncLifetime
 
         // Assert
         Assert.Equal(ErrorCode.ModelReturnedNoAnswer, result.Error);
+    }
+
+    /// <summary>
+    /// When the provider answers with prose instead of calling a tool
+    /// And the model is asked
+    /// Then the call is refused as having named no tool, not thrown.
+    /// </summary>
+    [Fact]
+    public async Task AskAsync_ProviderRepliesWithProse_IsRefusedAsNoToolCall()
+    {
+        // Arrange
+        await wireMock.SeedAiAnswerAsync("Sure, I can help with that.");
+
+        // Act
+        var result = await _sut.AskAsync("call the bank tomorrow at 10", CancellationToken.None);
+
+        // Assert
+        Assert.Equal(ErrorCode.ModelReturnedNoToolCall, result.Error);
     }
 }
