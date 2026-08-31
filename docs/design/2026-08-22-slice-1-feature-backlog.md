@@ -535,11 +535,43 @@ empty answer are each refused with a named `ErrorCode` instead of crashing the l
   refresh loop that belongs with F10's kept reply, not F9a's throwaway prose — a fresh deferral,
   not an inherited one.
 
-**F9b · Parse a tool call out of the answer** — spec §5.2, §5.3, §12.3
+**F9b · Parse a tool call out of the answer** — spec §5.2, §5.3, §12.3 · **done**
 `IAssistantTool`, `CreateTaskTool` as its first implementation, tool definitions added to the
 chat request, `tool_calls` parsed out of the response, `CreateTaskRequest` in `Contracts`, and
 `IAiClient.AskAsync` changed to return `Result<ToolCall>` in place of `Result<string>`.
 *Tests:* free text produces the expected tool call against a WireMock'd provider.
+*Settled at F9b:*
+- **`IAssistantTool` carries no execution member.** `Name`, `Description` and
+  `ParametersJsonSchema` are enough to put a tool definition on the wire request; `ExecuteAsync`
+  arrives at F10 as a deliberate modification to this interface, once `ITaskService` has a create
+  method for it to call. Considered and rejected: defining it now against nothing, the shape an
+  earlier, abandoned full-slice draft took.
+- **`ToolCall` and `CreateTaskRequest` both live in `Contracts`**, next to `ErrorCode` and
+  `Result<T>` — the first two request/response-style types that project has shipped. `ToolCall`
+  carries the model's arguments as a raw JSON string, not a bound value: `AiClient` knows a tool
+  was named, not which typed shape to bind its arguments against, so binding stays the calling
+  tool's job, arriving with dispatch at F10.
+- **`CreateTaskRequest.DueAtLocal` stays a string.** Resolving it against the configured zone is
+  `ILocalTimeResolver.Resolve`'s job, called from F10's `CreateTaskTool.ExecuteAsync` once that
+  exists — not this slice's, and not a job a parsed `DateTime` could do without a zone to resolve
+  against yet. `Notes` and `Priority` are absent from the schema entirely, deferred to F10 and
+  F12, the features that give `ReminderTask` somewhere to put them.
+- **A model's prose reply is a named failure**, `ErrorCode.ModelReturnedNoToolCall`, appended
+  after `ModelReturnedNoAnswer` — distinct from a transport failure or an empty response, both
+  already named at F9a. `MessageHandler` gives it its own sentence, telling the owner their
+  message was not read as a task rather than folding it into "could not reach the model."
+- **Shipped in two commits, in one PR, on purpose**, mirroring F9a-3's own shape: the happy path
+  first, with the parsed tool call dereferenced by the null-forgiving operator rather than
+  guarded, so a prose-only reply crashed for real before `ModelReturnedNoToolCall` gave that
+  failure a name. The crash surfaced two ways — an immediate `NullReferenceException` at the
+  `AiClientTests` level, and a `TimeoutException` at the `TelegramListenerTests` level, because
+  `TelegramListener` already catches and logs a handler's exception per update rather than
+  propagating it.
+- **`IAiApi`'s tool-definition JSON Schema travels as a `System.Text.Json.Nodes.JsonNode`, not a
+  `JsonElement`.** A `JsonNode` carries no disposal lifetime to trip over; a `JsonElement` parsed
+  from a `JsonDocument` stops being readable once that document is disposed.
+  `WireMockFixture`'s own seeded payloads already use the same `JsonNode` family.
+- **No new NuGet package.** The wire and tool-definition types this slice adds are all `System.Text.Json`.
 
 **F10 · Store the parsed task and reply · observable** — spec §5.1
 `ITaskService.CreateAsync`, the mapping extension methods, and the reply rendered with its
