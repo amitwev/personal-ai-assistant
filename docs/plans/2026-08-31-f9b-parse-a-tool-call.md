@@ -1627,8 +1627,22 @@ After:
             return Result<ToolCall>.Failure(ErrorCode.ModelReturnedNoToolCall);
         }
 
+        logger.LogInformation(
+            "The chat model called {Tool} with {Arguments}.",
+            call.Function.Name,
+            call.Function.Arguments);
+
         return Result<ToolCall>.Success(new ToolCall(call.Function.Name, call.Function.Arguments));
 ```
+
+The `LogInformation` line is the only place a live run can show what the model actually sent:
+`MessageHandler`'s reply is a fixed sentence whichever branch ran, so without it an end-to-end
+test against a real provider can tell you *whether* a tool was called but never *with what*. It
+carries no test of its own, and needs none — `AiClient`'s existing `LogError` calls have none
+either, and nothing in this project asserts on logging. F10 parses `due_at_local` through
+`ILocalTimeResolver`, and that is the debugging this line exists to serve. The tool name and the
+raw arguments are structured properties, not interpolated into the message string, matching how
+every other log statement in the codebase is written.
 
 - [ ] **Step 5: Branch `MessageHandler` on the new code**
 
@@ -1714,6 +1728,12 @@ only surfaced after a 10-second timeout, because TelegramListener
 already catches and logs a handler's exception per update rather than
 letting one bad message take down the poll loop -- itself proof that
 defence works, not a flaw in the test.
+
+AiClient also logs the parsed call at Information. MessageHandler's
+reply is a fixed sentence whichever branch runs, so this is the only
+place a live run can show which tool the model chose and what
+arguments it sent -- the raw string F10 will parse through
+ILocalTimeResolver.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01EKjh2GD3CzkKt9aPxibkVF
@@ -1835,6 +1855,8 @@ Claude-Session: https://claude.ai/code/session_01EKjh2GD3CzkKt9aPxibkVF
       implicit value moved
 - [ ] `MessageHandler`'s switch expression names `ErrorCode.ModelReturnedNoToolCall` explicitly,
       falling through to `Unreachable` for every other failure
+- [ ] `AiClient` logs the parsed tool call at `Information` on the success path, with the tool
+      name and raw arguments as structured properties rather than interpolated into the message
 
 **Commit 3 (docs):**
 - [ ] F9b's backlog entry carries `**done**` and a `*Settled at F9b:*` list in the same style as
