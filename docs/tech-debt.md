@@ -66,3 +66,69 @@ cost.
 **Scope when it is picked up.** `Result` is part of `ITaskService`, shipped at F5a. Changing it
 is its own pull request, not something folded into a feature branch that happens to touch a
 result type.
+
+## Each handler opens its own scope, rather than the dispatcher opening one
+
+**What the compromise is.** `MessageHandler` (registered singleton,
+`ImplServiceCollectionExtensions.cs:78`) cannot constructor-inject `IAiClient` (registered
+scoped, same file line 138), so it takes `IServiceScopeFactory` and opens a scope per update
+inside `HandleAsync`. `DueReminderJob.cs:27` already does the same for `ITaskService`. The scope
+handling therefore lives in each consumer rather than in one place.
+
+**Why it is this way, route by route.**
+
+1. *Constructor-inject `IAiClient` into `MessageHandler`.* This is a captive dependency — a
+   scoped service pinned for the process lifetime by a singleton holder. `ValidateScopes` is
+   enabled by default in the Development environment, so the host throws while composing:
+   "Cannot consume scoped service 'Assistant.Interfaces.IAiClient' from singleton". In
+   Production it does not throw; it silently produces one instance for the life of the process,
+   which is worse than the exception.
+
+2. *Register `IAiClient` as a singleton so the injection is legal.* This compiles and starts,
+   and defeats the reason the lifetime is scoped. `AiClient` depends on `IAiApi`, a Refit
+   interface backed by a typed `HttpClient` (`ImplServiceCollectionExtensions.cs:124`).
+   `IHttpClientFactory` hands out clients over a rotating pool of `HttpMessageHandler`
+   instances — the default handler lifetime is two minutes — so DNS changes are picked up. A
+   singleton holder pins one handler, and the addresses it resolved, for as long as the process
+   runs. That is the stale-DNS failure `IHttpClientFactory` exists to prevent, and OpenRouter
+   sits behind a CDN, so it is a live concern rather than a theoretical one.
+
+3. *Register `MessageHandler` as scoped.* This does not work on its own, because the thing
+   holding the handler is itself a singleton. `TelegramListener` is a `BackgroundService` that
+   takes `IEnumerable<ITelegramUpdateHandler>` and resolves the whole collection once, in the
+   field initializer at `TelegramListener.cs:39`, to compute `_allowedUpdates` for the long-poll
+   call. Making handlers scoped forces the listener to open a scope per update and resolve
+   handlers inside it — which relocates the same `IServiceScopeFactory` one level up, and
+   breaks that field initializer.
+
+**The fix, when it is worth doing.** Route 3 taken deliberately rather than as a side effect:
+`TelegramListener.DispatchAsync` opens one scope per update and resolves the matching handlers
+from it, and handlers go back to plain constructor injection of what they need.
+
+```csharp
+using var scope = scopeFactory.CreateScope();
+
+foreach (var handler in scope.ServiceProvider
+    .GetServices<ITelegramUpdateHandler>()
+    .Where(h => h.Handles == update.Type))
+```
+
+The cost is plain: `_allowedUpdates` can no longer be a field initializer over an injected
+collection, because the handlers are no longer resolvable at construction. The kinds have to be
+computed once at startup from a scope the listener opens for that purpose. That is the whole
+cost, and it is small — but it is a change to code shipped at F7, which is why it is not worth
+paying for a single handler.
+
+**The trigger for revisiting.** The second update handler. F6 ("Complete a task from a button",
+in `docs/design/2026-08-22-slice-1-feature-backlog.md`) introduces `ICallbackHandler` and
+`CallbackRouter`, a second `ITelegramUpdateHandler` that will need a scope for the same reason
+`MessageHandler` does. At one handler the current shape is one `CreateScope()` call in one
+place; at two it is the same three lines copied, and the dispatcher becomes the obviously right
+owner.
+
+**Scope when it is picked up.** This is a deliberate exception to the preamble's rule above, and
+it is named as one on purpose: an entry here is not a licence to fix the thing opportunistically
+inside an unrelated feature branch. F6 is not that — F6 is the branch that creates the trigger,
+the second handler, in the first place, so the pull request that adds `ICallbackHandler` is
+also the right place to move the scope into `TelegramListener` and simplify `MessageHandler`
+to match.

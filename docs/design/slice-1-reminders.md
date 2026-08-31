@@ -3,7 +3,7 @@
 **Version:** 2.0.0
 **Date:** 2026-08-16
 **Status:** Approved for planning
-**Stack:** C# / .NET 10 (LTS), PostgreSQL 16, Telegram Bot API, `Microsoft.Extensions.AI`
+**Stack:** C# / .NET 10 (LTS), PostgreSQL 16, Telegram Bot API, Refit
 **Repository:** `personal-ai-assistant` — public on GitHub from the first commit, MIT licensed
 **Supersedes for slice 1:** `personal_ai_assistant_spec.md` (that document remains the long-term vision)
 
@@ -155,8 +155,8 @@ Assistant.Impl/
 ├─ Mapping/        ReminderTaskMappingExtensions, NotificationMappingExtensions
 ├─ Tools/          CreateTaskTool, ListTasksTool, UpdateTaskTool, CompleteTaskTool
 ├─ Telegram/       TelegramListener, TelegramNotifier, CallbackRouter
-├─ Ai/             IAnthropicApi, IOpenRouterApi (Refit), the IChatClient adapters,
-│                  FallbackChatClient
+├─ Ai/             IAiApi (Refit), AiClient (the IAiClient adapter), SystemPrompt.
+│                  FallbackChatClient is undecided, see §5.5.
 └─ Scheduling/     ReminderScheduler, ScheduledJobBase, HeartbeatWriter
 ```
 
@@ -181,7 +181,6 @@ Each interface is a point where behaviour is added by writing a new class, never
 | `IScheduledJob` | `DueReminderJob`, `DailyBriefJob` | New recurring job → new class; scheduler untouched |
 | `INotifier` | `TelegramNotifier` | Additional channel without touching job logic |
 | `TimeProvider` | `TimeProvider.System`, `FakeTimeProvider` | Makes every time-based rule testable |
-| `IChatClient` | `AnthropicChatClient`, `OpenRouterChatClient`, `FallbackChatClient` | Provider change is configuration |
 
 `ReminderScheduler` injects `IEnumerable<IScheduledJob>` and knows nothing about the jobs it runs. Adding a third job requires no change to the scheduler.
 
@@ -315,7 +314,7 @@ Telegram update arrives (long poll)
   → persist inbound message to chat_messages
   → start "typing…" indicator, refreshed every 4s until the reply is sent
   → build request: system prompt + last ~20 turns + user text
-  → IChatClient → tool call
+  → IAiClient → tool call
   → IAssistantTool → ITaskService → repository → Postgres
   → reply rendered with inline keyboard
 ```
@@ -368,9 +367,24 @@ Absolute-from-model rather than relative is deliberate: resolving relative expre
 
 ### 5.5 Provider routing and fallback
 
-Both providers are reached through **Refit** interfaces (§12.3) — `IAnthropicApi` and `IOpenRouterApi` — with thin `IChatClient` adapters over them that translate between the provider wire format and the project's own request and response types.
+**Corrected at F9a:** every provider this project reaches is exercised through **one** Refit
+interface, `IAiApi` (§12.3), named for the OpenAI-compatible chat API that OpenRouter, OpenAI,
+Groq and a local Ollama all serve — not `IAnthropicApi`/`IOpenRouterApi` as this section
+originally named them. Anthropic is ruled out of slice 1 entirely; OpenRouter is the provider
+`AiSettings` ships a default for, and switching to any other OpenAI-compatible endpoint is a
+configuration change (`AiSettings.BaseUrl`, `AiSettings.Model`), not a new type. `AiClient` is
+the one `IAiClient` adapter, translating between the wire format and the project's own request
+and response types.
 
-`FallbackChatClient` is a decorator wrapping the Anthropic primary and the OpenRouter secondary, with Polly for timeout and circuit-breaking. Neither concrete client is aware of the other; only the composition root changes when providers change.
+`FallbackChatClient` is a decorator wrapping a primary and a secondary `IAiClient`, with Polly
+for timeout and circuit-breaking. Neither concrete client is aware of the other; only the
+composition root changes when providers change.
+
+**Open question, raised at F9a, not resolved here:** OpenRouter is itself a router — a request
+against one upstream model can already fail over to another model before OpenRouter ever answers
+the caller. Going OpenRouter-first for the primary (and, plausibly, the fallback too) may make
+`FallbackChatClient` redundant with routing OpenRouter already does. This section owes an answer
+before F13 builds `FallbackChatClient`; F9a does not decide it.
 
 ### 5.6 Never lose a capture
 
@@ -535,7 +549,7 @@ With services and adapters sharing one assembly, these are load-bearing rather t
 
 **Namespace-level, inside `Impl`**
 
-- `Impl.Services` referencing `Telegram.Bot` or `Microsoft.Extensions.AI` types
+- `Impl.Services` referencing `Telegram.Bot`, the OpenAI-compatible wire types, or `Refit` types
 - `Impl.Telegram` or `Impl.Ai` referencing repository interfaces
 - `Impl.Services.Jobs` or `Impl.Services.Actions` referencing repository interfaces — they go through `ITaskService` (§4.2)
 
@@ -780,7 +794,7 @@ public interface IAnthropicApi
 }
 ```
 
-Registered via `AddRefitClient<T>()` with the base address, auth headers, and the Polly resilience handler attached at the `HttpClient` level, so retry and circuit-breaking are configuration rather than code inside the adapter.
+Registered via `AddRefitGeneratedClient<T>()` — Refit 15's source-generator path; `AddRefitClient<T>()` is the reflection path and needs a `Refit.Reflection` package this project does not take — with the base address, auth headers, and the Polly resilience handler attached at the `HttpClient` level, so retry and circuit-breaking are configuration rather than code inside the adapter.
 
 Why this suits the project: a Refit interface *is* the contract, so it is legible and reviewable; and because the base address is a registration concern, pointing it at WireMock in tests requires no production seam.
 

@@ -456,10 +456,89 @@ ambiguity.
   reading; F9 adds a member for the current local time when the system prompt needs one to
   state "now" in the user's zone.
 
-**F9 · Send to the model and get a tool call** — spec §5.2, §5.3, §12.3
-`IChatClient`, `IAnthropicApi` via Refit, the system prompt carrying current local time, and
-`CreateTaskTool` as the first `IAssistantTool`. Adds `CreateTaskRequest` to `Contracts`
-(`Result` and `ErrorCode` arrived at F5a).
+**F9a · Reach the model** — spec §5.1, §5.2, §5.5, §12.3 · **done**
+`IAiClient`, `IAiApi` via Refit against the OpenAI-compatible chat API, `AiSettings`, the system
+prompt carrying the current local time, and `MessageHandler` replying with the model's answer
+instead of an echo. No tools yet: parsing a `create_task` call out of the answer is F9b. Shipped
+as four independently reviewable PRs — settings, the clock and system prompt, reaching the model,
+and this reply.
+*Tests:* free text gets an answer back from a WireMock'd provider; a provider failure and an
+empty answer are each refused with a named `ErrorCode` instead of crashing the listener.
+*Settled at F9a:*
+- **OpenRouter, not Anthropic, and nothing is named after a vendor.** The repository owner ruled
+  Anthropic out of slice 1 entirely. `IAiApi`, `AiClient` and `AiStubs` are named for the
+  OpenAI-compatible chat API, which OpenRouter, OpenAI, Groq and a local Ollama all serve, so
+  moving providers is a change to `AiSettings.BaseUrl` and `AiSettings.Model`, never a new type.
+  Spec §5.5 named `IAnthropicApi`/`IOpenRouterApi`; corrected here. The transport interface
+  itself went through two names before landing: `IChatClient`/`ChatCompletionsClient` were
+  rejected on review — "Completions" named the vendor's own endpoint rather than anything the
+  class does, and "Client" read as outbound in the `HttpClient` sense — before
+  `IAiClient`/`AiClient` shipped.
+- **The chat API turned out simpler than Anthropic's would have been.** The system prompt is
+  `messages[0]` with `role: "system"`, not a separate top-level `system` field, so no record
+  property is named `System` and the namespace-shadowing trap that shape would set up next to
+  `System.*` types never arises.
+- **`AiSettings` lives in `Impl/Settings/`,** joining `TelegramSettings`, `TimeSettings` and
+  `DatabaseSettings` — configuration is not an `Ai/` concern, even though spec §3.4 places the
+  Refit interface itself in `Impl/Ai/`. Shipped alone, first, together with a minimal
+  `AddAssistantAi` that registers it — extended in place across later PRs, never recreated.
+- **`AiSettings.BaseUrl` is required,** unlike `TelegramSettings.BaseUrl`. Telegram's is nullable
+  because absent means "the real Telegram"; there is no single "the" chat API provider, so
+  `appsettings.json` ships OpenRouter's address as a changeable default instead.
+- **`IAiClient.AskAsync` returns `Result<string>` at F9a.** It changes shape at F9b, to
+  `Result<ToolCall>`, once there is a tool call to parse out of the answer — a modification, not
+  an extension, and accepted because `IAiClient` is a transport abstraction rather than one of
+  spec §3.6's behaviour seams: it has exactly one production implementation today and will still
+  have exactly one at F9b. The seam F9b actually grows is `IAssistantTool`. §3.6's own table
+  named this interface as a seam; corrected here by removing the row rather than renaming it.
+- **`ILocalTimeResolver` gained `CurrentLocalTime` and `ZoneId`,** the members F8's own "Settled
+  at F8" note deferred until something needed to state "now" in the user's zone. Both live on the
+  resolver, not injected as a raw `TimeZoneInfo` into `SystemPrompt`, so the zone keeps exactly
+  one owner.
+- **The offset formatter renders a half-hour zone as `UTC+10:30`, not `UTC+11` or `UTC+10`.**
+  Tested against `Australia/Lord_Howe`, for the same reason F8 tested its gap and ambiguity rules
+  there: a round-hour zone cannot catch a formatter that silently drops minutes.
+- **The system prompt names the configured zone twice, never a literal.** It appears once next to
+  the current time and once in "All times the user gives are `<zone>` local" — both reads from
+  `ILocalTimeResolver.ZoneId`.
+- **`MessageHandler` takes `IServiceScopeFactory`, not `IAiClient`, directly.** `TelegramListener`
+  injects `IEnumerable<ITelegramUpdateHandler>` and is itself a singleton `BackgroundService`, so
+  every handler is a singleton too. A Refit client is a typed `HttpClient`; capturing one in a
+  singleton would pin its message handler and defeat the factory's handler rotation.
+  `DueReminderJob` already solved this identical problem for `ITaskService`; `MessageHandler` now
+  solves it the same way, and F10 will need the same scope for `ITaskService` too.
+- **A provider failure is an answer, not a crash — shipped in two commits, in one PR, on
+  purpose.** The happy-path `AiClient` went in first, with no `ErrorCode` and no `try`/`catch`,
+  so the failing-test step for the 500 and empty-choices cases showed a real crash
+  (`Refit.ApiException`, and an `ArgumentOutOfRangeException` off an empty array) before
+  `ModelUnavailable` and `ModelReturnedNoAnswer` gave those two failures a name and a graceful
+  `Result<string>.Failure`.
+- **`ErrorCode` gained `ModelUnavailable` and `ModelReturnedNoAnswer`, appended** after
+  `DueTimeTooFarAhead` — no existing member's numeric value moved.
+- **Integration tests do not pin the clock.** No assertion in this feature reads the system
+  prompt's time content at either level — `SystemPromptTests` owns that ground with
+  `FakeTimeProvider`, so `AiClientTests` and `TelegramListenerTests` both run against
+  `AddAssistantServices()`'s default `TimeProvider.System`, unmodified.
+- **F7's echo test became an assertion on the model's answer**, as the backlog always intended.
+  Its "only the owner is answered" sibling lost its own copy of the reply's exact text: checking
+  it there duplicated the renamed test, which spec §7.2 forbids — a de-duplication, not a
+  weakened test; the renamed test alone now owns the reply's content.
+- **`.env.example` carries `AiSettings__ApiKey`, `AiSettings__Model` and `AiSettings__BaseUrl`**,
+  replacing two dead keys (`LLM__ANTHROPIC__APIKEY`, `LLM__OPENROUTER__APIKEY`) that predated
+  every naming convention in this repository and that no code had ever read.
+- **The default model is `anthropic/claude-sonnet-5`, verified present in OpenRouter's live
+  model list.** A model slug naming a vendor is unavoidable and is not what the vendor-neutral
+  type naming above is about. `.env.example` names `anthropic/claude-haiku-4.5`, also verified
+  present, as the cheaper alternative.
+- **The "typing…" indicator stays deferred, again.** Spec §5.1 deferred it to F9 because F7 had
+  no wait to cover. F9a does have one now, but the indicator needs an `INotifier` member and a
+  refresh loop that belongs with F10's kept reply, not F9a's throwaway prose — a fresh deferral,
+  not an inherited one.
+
+**F9b · Parse a tool call out of the answer** — spec §5.2, §5.3, §12.3
+`IAssistantTool`, `CreateTaskTool` as its first implementation, tool definitions added to the
+chat request, `tool_calls` parsed out of the response, `CreateTaskRequest` in `Contracts`, and
+`IAiClient.AskAsync` changed to return `Result<ToolCall>` in place of `Result<string>`.
 *Tests:* free text produces the expected tool call against a WireMock'd provider.
 
 **F10 · Store the parsed task and reply · observable** — spec §5.1

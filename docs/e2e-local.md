@@ -38,6 +38,8 @@ Settings bind by section name, double underscore for nesting:
 - `TelegramSettings__OwnerChatId`
 - `TelegramSettings__BaseUrl`
 - `DatabaseSettings__ConnectionString`
+- `AiSettings__ApiKey`
+- `AiSettings__BaseUrl`
 
 ## Walkthrough against the stub
 
@@ -84,8 +86,14 @@ DatabaseSettings__ConnectionString="Host=localhost;Port=55432;Database=assistant
 TelegramSettings__BotToken="111111:AAFakeTokenForLocalStubRunsOnly_xxxxx" \
 TelegramSettings__OwnerChatId="<your-chat-id>" \
 TelegramSettings__BaseUrl="http://localhost:58080" \
+AiSettings__ApiKey="stub-key-not-checked" \
+AiSettings__BaseUrl="http://localhost:58080" \
 dotnet run --project src/Assistant.Worker
 ```
+
+`AiSettings.ApiKey` has no default anywhere, so every worker run needs one from here on, even
+this one, which never sends the owner a message; `AiSettings.BaseUrl` is pointed at the same
+stub `TelegramSettings.BaseUrl` already uses so the walkthrough stays fully offline.
 
 Two things about that command are easy to get wrong:
 
@@ -207,8 +215,11 @@ docker compose -f compose.test.yaml down -v
 
 ## Walkthrough against real Telegram
 
-Two things differ from the stub run: you supply a real bot token, and you omit
-`TelegramSettings__BaseUrl` so the client talks to `api.telegram.org` instead of the stub.
+Three things differ from the stub run: you supply a real bot token, you omit
+`TelegramSettings__BaseUrl` so the client talks to `api.telegram.org` instead of the stub, and
+you supply a real `AiSettings:ApiKey` instead of the stub run's throwaway one --
+`AiSettings__BaseUrl` needs no override here, since `appsettings.json`'s own default already
+points at the real OpenRouter endpoint.
 
 Store the token and your chat id in user secrets, never in `appsettings.Development.json` —
 this repository is public:
@@ -217,6 +228,8 @@ this repository is public:
 dotnet user-secrets set "TelegramSettings:BotToken" "<token from BotFather>" \
   --project src/Assistant.Worker
 dotnet user-secrets set "TelegramSettings:OwnerChatId" "<your-chat-id>" \
+  --project src/Assistant.Worker
+dotnet user-secrets set "AiSettings:ApiKey" "<your OpenRouter key>" \
   --project src/Assistant.Worker
 ```
 
@@ -233,7 +246,8 @@ separates "my token is wrong" from "my scheduler is wrong" before you invest in 
 
 From there, the full run is a plain `dotnet run --project src/Assistant.Worker` with no
 environment variables at all — which is exactly what the owner ran. `appsettings.Development.json`
-supplies the database and user secrets supply the token, so nothing needs exporting:
+supplies the database and user secrets supply the token and the model key, so nothing needs
+exporting:
 
 ```bash
 dotnet run --project src/Assistant.Worker
