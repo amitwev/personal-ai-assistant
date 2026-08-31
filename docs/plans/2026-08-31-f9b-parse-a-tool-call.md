@@ -198,6 +198,17 @@ from the existing "I could not reach the model" sentence used for `ModelUnavaila
   the direct sibling this new member sits next to, differing from it only in *what* came back
   empty. `ModelReturnedNoToolCall` reads as that sibling on sight; `ModelDidNotCallATool` does
   not signal the relationship at all.
+- **Sending `tool_choice: "required"` so the provider cannot return prose at all.** The provider
+  supports it: OpenRouter advertises `tool_choice` alongside `tools` and `structured_outputs` for
+  every model this project has run against. Setting it would make this failure mode nearly
+  unreachable rather than merely named. Rejected for this slice on backlog §1's own terms: a new
+  field on `AiRequest` needs a test asserting it lands on the wire, and that test would assert a
+  value nothing downstream reads. The request therefore goes out with the provider default,
+  `auto` — a decision recorded here, not an omission. It is also the default the later features
+  want: F13's raw-capture fallback (spec §5.6), and any reply that is not a task at all, both
+  need the model free to answer without calling a tool, so `required` would have to be lifted
+  again. Once F10 closes the loop and there is a real prose rate to look at, `tool_choice` is the
+  lever to reach for, with observed behaviour to justify it.
 
 **Why the recommendation holds:** YAGNI, plus the failure path already exists as working
 machinery from F9a — `Result<T>.Failure(ErrorCode)` and `MessageHandler`'s existing branch on
@@ -391,6 +402,13 @@ regardless.
 - **`FallbackChatClient`, Polly, retry, circuit breaking, the raw-capture safety net of spec
   §5.6.** F13's, unchanged from every prior slice's deferral of the same ground.
 - **The "typing…" indicator.** Deferred again at F9a-4; still not this slice's concern.
+- **`response_format` and structured outputs.** The provider supports both alongside tool calling
+  — OpenRouter advertises `response_format` and `structured_outputs` for the models this project
+  runs against — and this slice deliberately uses `tools` instead. A `response_format` schema pins
+  one shape to the whole response, which serves a single-purpose extraction call; spec §5.3's
+  table names four tools the model must eventually choose between, and choosing is exactly what
+  `tool_calls` is for. Structured outputs would have to be replaced at the second tool rather than
+  extended to it.
 - **Any change to `AiStubs.cs` or the WireMock stub image.** "Verified facts," above, explains
   why the existing default mapping already serves this slice correctly.
 
