@@ -16,11 +16,15 @@ internal static class ReminderTaskBuilder
     /// <param name="reminderSentAt">
     /// The instant the reminder was sent, or null when it has not been. Defaults to null.
     /// </param>
+    /// <param name="completedAt">
+    /// The instant the task was completed, or null when it has not been. Defaults to null.
+    /// </param>
     /// <returns>A new <see cref="ReminderTask"/> with a freshly generated identifier.</returns>
     internal static ReminderTask BuildReminderTask(
         DateTimeOffset? dueAt = null,
         ReminderStatus status = ReminderStatus.Pending,
-        DateTimeOffset? reminderSentAt = null) => new()
+        DateTimeOffset? reminderSentAt = null,
+        DateTimeOffset? completedAt = null) => new()
     {
         Id = Guid.NewGuid(),
         Title = "call the bank",
@@ -29,5 +33,6 @@ internal static class ReminderTaskBuilder
         ReminderSentAt = reminderSentAt,
         CreatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
         UpdatedAt = new DateTimeOffset(2026, 8, 20, 9, 15, 30, TimeSpan.Zero),
+        CompletedAt = completedAt,
     };
 }

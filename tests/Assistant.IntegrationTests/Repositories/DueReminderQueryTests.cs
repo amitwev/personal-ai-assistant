@@ -91,7 +91,8 @@ public sealed class DueReminderQueryTests(PostgresFixture postgres) : IAsyncLife
     public async Task GetDueRemindersAsync_TaskNotPending_ReturnsNothing(ReminderStatus status)
     {
         // Arrange
-        var reminderTask = BuildReminderTask(dueAt: DueAnHourAgo, status: status);
+        var completedAt = status == ReminderStatus.Completed ? AsOf : (DateTimeOffset?)null;
+        var reminderTask = BuildReminderTask(dueAt: DueAnHourAgo, status: status, completedAt: completedAt);
         await postgres.SaveAsync(reminderTask);
 
         // Act

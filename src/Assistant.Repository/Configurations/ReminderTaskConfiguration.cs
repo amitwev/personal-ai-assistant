@@ -21,6 +21,9 @@ internal sealed class ReminderTaskConfiguration : IEntityTypeConfiguration<Remin
             t.HasCheckConstraint(
                 "ck_reminder_tasks_sent_requires_due",
                 "reminder_sent_at IS NULL OR due_at IS NOT NULL");
+            t.HasCheckConstraint(
+                "ck_reminder_tasks_completed_consistency",
+                "(status = 2) = (completed_at IS NOT NULL)");
         });
 
         builder.HasKey(x => x.Id);
@@ -33,6 +36,9 @@ internal sealed class ReminderTaskConfiguration : IEntityTypeConfiguration<Remin
             .HasColumnType("timestamptz");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz");
+        builder.Property(x => x.CompletedAt)
+            .HasColumnName("completed_at")
+            .HasColumnType("timestamptz");
 
         builder.HasIndex(x => x.DueAt)
             .HasDatabaseName("idx_tasks_due_pending")
