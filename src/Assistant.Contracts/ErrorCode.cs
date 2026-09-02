@@ -37,7 +37,12 @@ public enum ErrorCode
     ModelUnavailable,
 
     /// <summary>
-    /// The chat model was reached but returned no usable answer.
+    /// The chat model was reached and answered, but returned no content and called no tools.
     /// </summary>
     ModelReturnedNoAnswer,
+
+    /// <summary>
+    /// The chat model was reached and answered, but without calling any tool.
+    /// </summary>
+    ModelReturnedNoToolCall,
 }

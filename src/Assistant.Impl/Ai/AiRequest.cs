@@ -7,5 +7,6 @@ namespace Assistant.Impl.Ai;
 /// <param name="Model">The model slug to request, such as <c>anthropic/claude-sonnet-5</c>.</param>
 /// <param name="Messages">The conversation so far, system prompt first.</param>
 /// <param name="MaxTokens">The maximum number of tokens the model may return.</param>
+/// <param name="Tools">Every tool definition offered to the model on this request.</param>
 internal sealed record AiRequest(
-    string Model, IReadOnlyList<AiMessage> Messages, int MaxTokens);
+    string Model, IReadOnlyList<AiMessage> Messages, int MaxTokens, IReadOnlyList<AiTool> Tools);

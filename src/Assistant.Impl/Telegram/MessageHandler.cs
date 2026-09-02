@@ -1,3 +1,4 @@
+using Assistant.Contracts;
 using Assistant.Impl.Settings;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +8,7 @@ using Telegram.Bot.Types.Enums;
 namespace Assistant.Impl.Telegram;
 
 /// <summary>
-/// Sends the owner's plain-text message to the chat model and replies with its answer.
+/// Sends the owner's plain-text message to the chat model and replies once it names a tool.
 /// </summary>
 /// <param name="settings">Validated Telegram configuration, which carries the owner's chat.</param>
 /// <param name="notifier">Where the reply is delivered.</param>
@@ -32,6 +33,12 @@ internal sealed class MessageHandler(
     private const string Unreachable =
         "I could not reach the model just now. Send that again in a moment.";
 
+    private const string ToolCallNotActedOnYet =
+        "Got it -- I understood that as a task, but I cannot save it yet.";
+
+    private const string NotUnderstoodAsATask =
+        "I did not read that as a task. Try rephrasing it.";
+
     /// <inheritdoc/>
     public UpdateType Handles => UpdateType.Message;
 
@@ -46,8 +53,15 @@ internal sealed class MessageHandler(
 
         using var scope = scopeFactory.CreateScope();
         var ai = scope.ServiceProvider.GetRequiredService<IAiClient>();
-        var answer = await ai.AskAsync(text, ct);
+        var result = await ai.AskAsync(text, ct);
 
-        await notifier.SendAsync(answer.IsSuccess ? answer.Value! : Unreachable, ct);
+        var reply = result switch
+        {
+            { IsSuccess: true } => ToolCallNotActedOnYet,
+            { Error: ErrorCode.ModelReturnedNoToolCall } => NotUnderstoodAsATask,
+            _ => Unreachable,
+        };
+
+        await notifier.SendAsync(reply, ct);
     }
 }
