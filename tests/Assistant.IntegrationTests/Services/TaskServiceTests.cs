@@ -1,6 +1,7 @@
 using Assistant.Contracts;
 using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
+using Assistant.Models;
 using Microsoft.Extensions.DependencyInjection;
 using static Assistant.IntegrationTests.Infrastructure.ReminderTaskBuilder;
 
@@ -88,6 +89,66 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
     {
         // Act
         var result = await _sut.MarkReminderSentAsync(Guid.NewGuid(), CancellationToken.None);
+
+        // Assert
+        Assert.Equal(ErrorCode.TaskNotFound, result.Error);
+    }
+
+    /// <summary>
+    /// When a pending task is completed
+    /// Then its status becomes Completed
+    /// And its CompletedAt is no longer null.
+    /// </summary>
+    [Fact]
+    public async Task CompleteAsync_TaskWasPending_SetsStatusAndStampsCompletedAt()
+    {
+        // Arrange
+        var reminderTask = BuildReminderTask(dueAt: AsOf.AddHours(-1));
+        await postgres.SaveAsync(reminderTask);
+
+        // Act
+        var result = await _sut.CompleteAsync(reminderTask.Id, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        var stored = await _repository.FindAsync(reminderTask.Id, CancellationToken.None);
+        Assert.Equal(ReminderStatus.Completed, stored!.Status);
+        Assert.NotNull(stored.CompletedAt);
+    }
+
+    /// <summary>
+    /// When a task is already completed
+    /// And it is completed again
+    /// Then it is refused as already completed
+    /// And its original CompletedAt is not overwritten.
+    /// </summary>
+    [Fact]
+    public async Task CompleteAsync_TaskAlreadyCompleted_IsRejectedAndCompletedAtUnchanged()
+    {
+        // Arrange
+        var originalCompletedAt = AsOf.AddHours(-3);
+        var reminderTask = BuildReminderTask(status: ReminderStatus.Completed, completedAt: originalCompletedAt);
+        await postgres.SaveAsync(reminderTask);
+
+        // Act
+        var result = await _sut.CompleteAsync(reminderTask.Id, CancellationToken.None);
+
+        // Assert
+        Assert.Equal(ErrorCode.TaskAlreadyCompleted, result.Error);
+        var stored = await _repository.FindAsync(reminderTask.Id, CancellationToken.None);
+        Assert.Equal(originalCompletedAt, stored!.CompletedAt);
+    }
+
+    /// <summary>
+    /// When no task carries the requested identifier
+    /// And it is completed
+    /// Then it is refused rather than silently doing nothing.
+    /// </summary>
+    [Fact]
+    public async Task CompleteAsync_TaskDoesNotExist_IsRejected()
+    {
+        // Act
+        var result = await _sut.CompleteAsync(Guid.NewGuid(), CancellationToken.None);
 
         // Assert
         Assert.Equal(ErrorCode.TaskNotFound, result.Error);
