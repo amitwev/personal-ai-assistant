@@ -76,7 +76,7 @@ public static class ImplServiceCollectionExtensions
     /// </remarks>
     public static IServiceCollection AddAssistantListener(this IServiceCollection services)
     {
-        services.AddSingleton<ITelegramUpdateHandler, MessageHandler>();
+        services.AddScoped<ITelegramUpdateHandler, MessageHandler>();
         services.AddHostedService<TelegramListener>();
         return services;
     }
