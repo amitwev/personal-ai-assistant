@@ -35,4 +35,21 @@ public interface ITaskService
     /// assistant's.
     /// </returns>
     Task<IReadOnlyList<ReminderTask>> GetDueRemindersAsync(int limit, CancellationToken ct);
+
+    /// <summary>
+    /// Marks a task as completed.
+    /// </summary>
+    /// <param name="id">The task to complete.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// Success, or the reason it was refused. Refused when no task carries the identifier, or
+    /// when the task has already been completed.
+    /// </returns>
+    /// <remarks>
+    /// A second call on an already-completed task is refused with
+    /// <see cref="ErrorCode.TaskAlreadyCompleted"/> rather than repeating the write: the row is
+    /// left exactly as the first call set it, so <see cref="ReminderTask.CompletedAt"/> always
+    /// carries the instant of the first completion, never a later one.
+    /// </remarks>
+    Task<Result> CompleteAsync(Guid id, CancellationToken ct);
 }

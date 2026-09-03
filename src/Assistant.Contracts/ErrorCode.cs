@@ -45,4 +45,9 @@ public enum ErrorCode
     /// The chat model was reached and answered, but without calling any tool.
     /// </summary>
     ModelReturnedNoToolCall,
+
+    /// <summary>
+    /// The task has already been completed.
+    /// </summary>
+    TaskAlreadyCompleted,
 }

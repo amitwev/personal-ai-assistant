@@ -223,13 +223,14 @@ Anemic models remove the entity as an enforcement point, so the rules need one o
 public interface ITaskService
 {
     Task<Result> MarkReminderSentAsync(Guid id, CancellationToken ct);
+    Task<Result> CompleteAsync(Guid id, CancellationToken ct);
 }
 ```
 
 Rules enforced inside it, in one place:
 
 - Completing a cancelled task is rejected.
-- Completing an already-completed task is a no-op, so a button can be tapped twice safely.
+- Completing an already-completed task is refused, protecting its original `CompletedAt` timestamp; a UI like an inline button can still treat this rejection as a safe duplicate.
 - Snooze and reschedule will clear `ReminderSentAt` and reset `DeliveryAttempts`, so the task fires again — the shape this pairing takes once `DeliveryAttempts` returns (F11); today only `MarkReminderSentAsync` sets `ReminderSentAt`, and there is no `DeliveryAttempts` column yet. **This pairing is the reason a single writer is mandatory** — setting one without the other silently stops a task from ever reminding again.
 - Snooze or reschedule on a completed task is rejected.
 - `MarkReminderSent` on a task with no `DueAt` is rejected.

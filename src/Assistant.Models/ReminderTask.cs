@@ -49,4 +49,14 @@ public sealed class ReminderTask
     /// When the task was last modified, in UTC.
     /// </summary>
     public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>
+    /// When the task was completed, in UTC.
+    /// </summary>
+    /// <value>
+    /// <see langword="null"/> until the task is completed. Set together with
+    /// <see cref="Status"/> becoming <see cref="ReminderStatus.Completed"/> -- the database
+    /// enforces that the two always agree.
+    /// </value>
+    public DateTimeOffset? CompletedAt { get; set; }
 }
