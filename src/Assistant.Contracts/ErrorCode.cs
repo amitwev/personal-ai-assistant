@@ -47,7 +47,7 @@ public enum ErrorCode
     ModelReturnedNoToolCall,
 
     /// <summary>
-    /// The task has already been completed, so completing it again would not do anything.
+    /// The task has already been completed.
     /// </summary>
     TaskAlreadyCompleted,
 }
