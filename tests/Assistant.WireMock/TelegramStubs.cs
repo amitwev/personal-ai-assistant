@@ -16,6 +16,13 @@ internal static class TelegramStubs
 
     private const string NoUpdatesResponse = """{"ok":true,"result":[]}""";
 
+    private const string AnswerCallbackQueryResponse = """{"ok":true,"result":true}""";
+
+    private const string EditMessageTextResponse = """
+        {"ok":true,"result":{"message_id":1,"date":1756000000,
+         "chat":{"id":1,"type":"private"},"text":"stubbed"}}
+        """;
+
     /// <summary>
     /// Installs the Telegram mappings on the given server.
     /// </summary>
@@ -40,6 +47,20 @@ internal static class TelegramStubs
                 .WithStatusCode(200)
                 .WithHeader("Content-Type", "application/json")
                 .WithBody(SendMessageResponse));
+
+        server
+            .Given(Request.Create().WithPath("/bot*/answerCallbackQuery").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(AnswerCallbackQueryResponse));
+
+        server
+            .Given(Request.Create().WithPath("/bot*/editMessageText").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(EditMessageTextResponse));
 
         server
             .Given(Request.Create().WithPath("/bot*/getUpdates").UsingPost())

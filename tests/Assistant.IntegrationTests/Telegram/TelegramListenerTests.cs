@@ -1,6 +1,8 @@
 using Assistant.Impl;
 using Assistant.Impl.Settings;
 using Assistant.IntegrationTests.Infrastructure;
+using Assistant.Interfaces;
+using Assistant.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -45,6 +47,7 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
             ApiKey = "test-key", BaseUrl = wireMock.Url, Model = "test-model", MaxTokens = 100,
         });
         services.AddAssistantListener();
+        services.AddSingleton<ITaskRepository, DummyTaskRepository>();
         _provider = services.BuildServiceProvider();
         _sut = _provider.GetServices<IHostedService>().Single();
 
@@ -155,5 +158,13 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
         // Assert
         var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
         Assert.Equal(NotUnderstoodAsATask, sent[0].Text);
+    }
+
+    private sealed class DummyTaskRepository : ITaskRepository
+    {
+        public Task AddAsync(ReminderTask task, CancellationToken ct) => Task.CompletedTask;
+        public Task<ReminderTask?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult<ReminderTask?>(null);
+        public Task UpdateAsync(ReminderTask task, CancellationToken ct) => Task.CompletedTask;
+        public Task<IReadOnlyList<ReminderTask>> GetDueRemindersAsync(DateTimeOffset asOfUtc, int limit, CancellationToken ct) => Task.FromResult<IReadOnlyList<ReminderTask>>(Array.Empty<ReminderTask>());
     }
 }

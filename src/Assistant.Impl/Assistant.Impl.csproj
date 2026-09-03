@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\Assistant.Interfaces\Assistant.Interfaces.csproj" />
@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Assistant.UnitTests" />
+    <InternalsVisibleTo Include="Assistant.IntegrationTests" />
   </ItemGroup>
 
   <PropertyGroup>

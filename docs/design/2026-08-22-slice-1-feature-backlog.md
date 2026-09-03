@@ -272,14 +272,25 @@ redelivered it. The same check against the real Telegram API is still owed by th
 owner, since it needs their bot token.
 
 **F6 · Complete a task from a button · observable** — spec §6.4
-`ITaskAction` + `DoneAction`, `ICallbackHandler` + `CallbackRouter`, the `v1:<action>:<id>`
-callback codec, in-place message edit, and `ITaskService.CompleteAsync`. `ReminderTask` regains
-`CompletedAt`, which also brings back the `ck_completed_consistency` check constraint. Depends on
-F7's `TelegramListener`: a callback query arrives on the same `getUpdates` stream. F6 adds a
-`CallbackQuery` handler and registers it, and `allowedUpdates` follows on its own — but the
-handler must apply the owner check itself, because there is no base class doing it.
+`ITaskAction` + `DoneAction`, `CallbackRouter`, the `v1:<action>:<id>` callback codec, in-place
+message edit, and `ITaskService.CompleteAsync`. `ReminderTask` regains `CompletedAt`, which also
+brings back the `ck_completed_consistency` check constraint. Depends on F7's `TelegramListener`: a
+callback query arrives on the same `getUpdates` stream. F6 adds a `CallbackQuery` handler and
+registers it, and `allowedUpdates` follows on its own — but the handler must apply the owner check
+itself, because there is no base class doing it.
 *Tests:* one tap completes; a second tap says "already done" rather than erroring; the callback
 query is always answered.
+*Settled at F6-2:*
+- **No `ICallbackHandler`.** This entry originally named the pair together, and
+  `docs/tech-debt.md`'s own "Each handler opens its own scope" entry repeated the claim. Built as
+  one abstraction fewer than planned: `CallbackRouter` implements `ITelegramUpdateHandler`
+  directly, the same as `MessageHandler` does, because nothing in this design routes a callback
+  query a second, different way — the real seam is `ITaskAction`, resolved by key, which this
+  entry already names correctly.
+- **Split across three pull requests**, not one: F6-1 (the column and the writer), F6-2 (this
+  entry's routing and answering machinery), F6-3 (the button itself). F6 stays open, unmet by the
+  `observable` tag, until F6-3 lands — see F6-1's and F6-2's own plans for why the button ships
+  last.
 
 ### Capture path — the flow you described
 
