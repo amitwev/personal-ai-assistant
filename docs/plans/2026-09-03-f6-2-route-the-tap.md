@@ -159,8 +159,8 @@ real WireMock container — not recollection.
   its own remarks (`TelegramNotifier.cs:13-24`) state escaping "happens here, not at call sites,
   because this is the only type that knows it is sending HTML," and that a text-versus-markup
   distinction is deferred to F10 "with a test that demands it" — this slice is not F10, and adds
-  no such distinction, but Decision 2 below explains why the method it does add stays consistent
-  with that same stated principle.
+  no such distinction, but Decision 2 below examines that same stated principle directly against
+  the method this slice adds, rather than assuming it still applies.
 - **`Telegram.Bot` 22.10.2.1 (`Directory.Packages.props:29`) exposes `AnswerCallbackQuery` and
   two `EditMessageText` overloads as extension methods on `ITelegramBotClient`.** Verified by
   loading the installed package assembly
@@ -318,14 +318,42 @@ entry's own wording happens not to follow. Building an interface because an earl
 it, after that document's own rule argues against it, would be exactly the kind of guess this
 project has already twice reversed the cost of writing.
 
-### 2. `INotifier` grows `MarkStruckThroughAsync`; the router does not talk to `ITelegramBotClient` for the edit
+### 2. `INotifier` grows `MarkCompletedTaskAsync`; the router does not talk to `ITelegramBotClient` for the edit
 
-**Decision:** `INotifier` gains a second method, `Task MarkStruckThroughAsync(int messageId,
+**Decision:** `INotifier` gains a second method, `Task MarkCompletedTaskAsync(int messageId,
 string text, CancellationToken ct)`. `TelegramNotifier` implements it by wrapping `text` in
 `<s>...</s>` and calling `bot.EditMessageText`, reusing its own existing private `Escape`.
-`CallbackRouter` calls `INotifier.MarkStruckThroughAsync`, not `ITelegramBotClient.EditMessageText`
+`CallbackRouter` calls `INotifier.MarkCompletedTaskAsync`, not `ITelegramBotClient.EditMessageText`
 directly, for the edit. It does call `ITelegramBotClient.AnswerCallbackQuery` directly — that half
 stays outside `INotifier` entirely.
+
+**Why `MarkCompletedTaskAsync`, not a name tied to Telegram's rendering.** `INotifier` is the
+channel-neutral seam: it is what a future non-Telegram notifier implements, not only today's
+Telegram one. Naming the method after strike-through — the one typographic effect this adapter
+happens to use — ties a channel-neutral interface to a single channel's presentation: any channel
+that cannot render strike-through would have to no-op it or fake it, with no way for the interface
+to say "I show completion differently." `MarkCompletedTaskAsync` names the intent instead, leaving
+each adapter free to choose its own rendering — Telegram strikes the title through; something else
+could prefix `[done]`, or change color, without `INotifier` itself changing at all.
+
+**The "rendering is the caller's job" objection does not survive contact with the code.**
+`INotifier`'s own remarks about `SendAsync` say a notifier "delivers text it is given" and that
+"rendering is the caller's job" — the line an earlier draft of this decision leaned on to justify a
+presentation-flavoured name. But the method this slice adds already wraps `text` in `<s>...</s>`
+inside `TelegramNotifier` before sending it — that *is* rendering, and it happens in the adapter,
+not the caller. The principle was not protecting anything here; only the old name was, by matching
+the interface method's name to the one rendering choice Telegram happens to make. Named for intent
+instead, the method still fits the escaping/rendering split `INotifier`'s remarks describe, stated
+accurately rather than stretched: the caller supplies plain text and an intent — mark this
+complete — and the adapter, today only `TelegramNotifier`, owns both escaping it and choosing how
+completion looks, the same way it already owns escaping for `SendAsync`.
+
+**Simplicity at the call site.** `MarkCompletedTaskAsync` says what the call is for without
+requiring the reader to know Telegram's markup vocabulary — `CallbackRouter` calls
+`notifier.MarkCompletedTaskAsync(...)` when an action succeeds, and that call reads correctly
+whether or not the reader has ever seen an `<s>` tag. A name that only parses once the reader
+already knows Telegram's own rendering choice is not simpler for being shorter; it is simpler to
+misread.
 
 **Why the edit goes through `INotifier`:** `TelegramNotifier`'s own remarks already state the
 reason before this slice ever touches the file — "Escaping happens here, not at call sites,
@@ -352,8 +380,17 @@ too — a channel-neutral button contract on `SendAsync` (or a new overload), so
 attach a Done button. That is a *different* operation (send-with-buttons) added for a *different*
 reason (a message needs buttons when it is first sent) than this slice's addition
 (mark-an-existing-message-as-done). The two do not need to anticipate each other's shape: F6-3 does
-not touch `MarkStruckThroughAsync`, and this slice's `MarkStruckThroughAsync` does not touch
+not touch `MarkCompletedTaskAsync`, and this slice's `MarkCompletedTaskAsync` does not touch
 `reply_markup` at all — see Decision 3.
+
+**Alternative considered: name the method `NotifyCompletedTaskAsync` (or "send done task"),
+reasoning that `INotifier`'s whole job is delivery.** Rejected, for a concrete reason rather than a
+stylistic one: this method does not deliver anything. It calls `EditMessageText` against a
+`messageId` that already exists — nothing new arrives on the owner's phone; an existing message
+changes appearance in place. A `Notify*`/`Send*` name promises a new message, which never comes.
+`Mark*` is correct because it names a change to something that already exists, the same distinction
+`SendAsync` itself already draws by reserving `Send*` for the one method that actually sends
+something new.
 
 **Alternative considered: `CallbackRouter` calls `ITelegramBotClient.EditMessageText` directly,
 duplicating or exposing `Escape`.** Rejected for the DRY reason above. A weaker variant — making
@@ -361,13 +398,13 @@ duplicating or exposing `Escape`.** Rejected for the DRY reason above. A weaker 
 own `EditMessageText` call — was also considered and rejected: it still leaves the *decision* of
 what wraps what (`<s>...</s>`, `ParseMode.Html`, which chat, whether `Escape` runs at all) outside
 the one type whose whole job is knowing that. `INotifier` growing a named, narrow method
-(`MarkStruckThroughAsync`, not a generic `EditAsync` with formatting options) keeps the decision
+(`MarkCompletedTaskAsync`, not a generic `EditAsync` with formatting options) keeps that decision
 inside `TelegramNotifier` and the interface change to exactly what this slice needs — nothing more
 speculative than that.
 
-### 3. There are no buttons to remove yet, and `MarkStruckThroughAsync` says so
+### 3. There are no buttons to remove yet, and `MarkCompletedTaskAsync` says so
 
-**Decision:** `TelegramNotifier.MarkStruckThroughAsync` calls `bot.EditMessageText` with no
+**Decision:** `TelegramNotifier.MarkCompletedTaskAsync` calls `bot.EditMessageText` with no
 `replyMarkup` argument at all. It neither clears an existing keyboard nor preserves one — it sends
 no instruction about the keyboard whatsoever, and the empirically verified fact above ("What
 actually lands on the wire") confirms that is exactly what omitting the parameter does: no
@@ -384,14 +421,16 @@ therefore never has a keyboard to clear. Passing an explicit empty `InlineKeyboa
 out.
 
 **What F6-3 must do about it, stated so it is not silently inherited as a bug.**
-`MarkStruckThroughAsync`'s own `<remarks>` say this directly: once F6-3 attaches the first
+`MarkCompletedTaskAsync`'s own `<remarks>` say this directly: once F6-3 attaches the first
 keyboard, this exact call site must pass an explicit empty (or updated) `InlineKeyboardMarkup`, or
 a completed reminder keeps its dead Done button visible under the struck-through title — tappable,
 routed correctly by `CallbackCodec`/`CallbackRouter` (which still work fine on an already-completed
-task, answering "Already done."), but visually wrong. This is not silent: it is named in the one
-doc comment F6-3's own implementer will read before touching this method, the same way
-`TelegramNotifier`'s class remarks already name F10 as the feature that must revisit its own
-text-versus-markup assumption.
+task, answering "Already done."), but visually wrong. This is not silent: it is named in the
+interface's own `<remarks>` and, in the Telegram-specific terms F6-3's implementer will actually
+need, in `TelegramNotifier.MarkCompletedTaskAsync`'s own `<remarks>` too — whichever doc comment
+that implementer opens first before touching this call site, the same way `TelegramNotifier`'s
+class remarks already name F10 as the feature that must revisit its own text-versus-markup
+assumption.
 
 **Alternative considered: pass an explicit empty keyboard now, "for correctness."** Rejected per
 the reasoning above — it is not more correct today, since there is nothing to clear; it is
@@ -522,7 +561,7 @@ because by the time an answer is observable in the stub's request log, any edit 
 still produce has already been issued and is waited-for for free, rather than needing a second,
 separate wait with its own race.
 
-**The cost, named rather than hidden.** If `MarkStruckThroughAsync` itself throws — a Telegram 400,
+**The cost, named rather than hidden.** If `MarkCompletedTaskAsync` itself throws — a Telegram 400,
 a network fault — the callback query is left unanswered on that one update, the same residual risk
 `TelegramListener.DispatchAsync`'s own outer try/catch already accepts for every handler today (a
 thrown exception is logged and the loop continues, exactly as it does for `MessageHandler`). This
@@ -598,7 +637,7 @@ feature, only the confidence in it.
 ```
 src/Assistant.Interfaces/
     ITaskAction.cs                            new                                     (Commit 2)
-    INotifier.cs                              + MarkStruckThroughAsync                (Commit 3)
+    INotifier.cs                              + MarkCompletedTaskAsync                (Commit 3)
 
 src/Assistant.Impl/
     Services/Actions/DoneAction.cs            new                                     (Commit 2)
@@ -606,7 +645,7 @@ src/Assistant.Impl/
     Telegram/CallbackRouter.cs                new                                     (Commit 3)
     Telegram/TelegramListener.cs              scope moved into DispatchAsync          (Commit 1)
     Telegram/MessageHandler.cs                back to plain constructor injection     (Commit 1)
-    Telegram/TelegramNotifier.cs              + MarkStruckThroughAsync                (Commit 3)
+    Telegram/TelegramNotifier.cs              + MarkCompletedTaskAsync                (Commit 3)
     ImplServiceCollectionExtensions.cs        registrations updated                   (Commits 1, 3)
     Assistant.Impl.csproj                     + InternalsVisibleTo IntegrationTests   (Commit 3)
 
@@ -692,7 +731,7 @@ answered, politely, with no edit; and a non-owner's tap is answered but changes 
 `IAssistantTool`/`IScheduledJob` (F5b/F9a, as the precedent for resolve-by-key), `WireMockFixture`/
 `PostgresFixture`/`IntegrationCollection`/`ReminderTaskBuilder` (F1-F7 test infrastructure).
 **Produces:** the scope-per-update fix, `ITaskAction`/`DoneAction`, `CallbackCodec`,
-`INotifier.MarkStruckThroughAsync`/`TelegramNotifier`'s implementation, `CallbackRouter`, and the
+`INotifier.MarkCompletedTaskAsync`/`TelegramNotifier`'s implementation, `CallbackRouter`, and the
 WireMock/fixture growth needed to observe all of it.
 
 Three commits. Commit 1 is a pure refactor with no new behaviour, verified by an unchanged existing
@@ -1301,19 +1340,19 @@ Claude-Session: https://claude.ai/code/session_01EKjh2GD3CzkKt9aPxibkVF
 - Create: `tests/Assistant.IntegrationTests/Telegram/CallbackRouterTests.cs`
 - Modify: `docs/design/2026-08-22-slice-1-feature-backlog.md`
 
-- [ ] **Step 1: Add `MarkStruckThroughAsync` to `INotifier`**
+- [ ] **Step 1: Add `MarkCompletedTaskAsync` to `INotifier`**
 
 In `src/Assistant.Interfaces/INotifier.cs`, append inside the interface, after `SendAsync`:
 
 ```csharp
 
     /// <summary>
-    /// Edits a previously sent message to show its text struck through.
+    /// Updates a previously sent message to reflect that the task it announced is now complete.
     /// </summary>
     /// <param name="messageId">Identifier of the message to edit.</param>
     /// <param name="text">
     /// The plain, unescaped text the message originally carried. The adapter escapes it and
-    /// applies the strike-through rendering; callers must not pre-format or pre-escape.
+    /// applies its own rendering for completion; callers must not pre-format or pre-escape.
     /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task that completes once the edit has been accepted.</returns>
@@ -1322,9 +1361,10 @@ In `src/Assistant.Interfaces/INotifier.cs`, append inside the interface, after `
     /// any, is left exactly as it is -- there is nothing to clear yet, because nothing in this
     /// codebase attaches a keyboard to a message before this method might edit it. F6-3, which
     /// attaches the first one, must revisit this call to pass an explicit empty keyboard, or a
-    /// completed reminder keeps its dead Done button under the struck-through title.
+    /// completed reminder keeps its dead Done button visible under a message that already shows
+    /// the task as done.
     /// </remarks>
-    Task MarkStruckThroughAsync(int messageId, string text, CancellationToken ct);
+    Task MarkCompletedTaskAsync(int messageId, string text, CancellationToken ct);
 ```
 
 - [ ] **Step 2: Implement it in `TelegramNotifier`**
@@ -1347,7 +1387,13 @@ After:
         await bot.SendMessage(settings.OwnerChatId, Escape(text), ParseMode.Html, cancellationToken: ct);
 
     /// <inheritdoc/>
-    public async Task MarkStruckThroughAsync(int messageId, string text, CancellationToken ct) =>
+    /// <remarks>
+    /// Renders completion by wrapping the escaped text in an inline &lt;s&gt; element -- this
+    /// adapter's own choice of how to show completion, not part of the interface's contract. F6-3
+    /// must revisit this call once it attaches the first inline keyboard, or a completed reminder
+    /// keeps a dead Done button visible under the struck-through title.
+    /// </remarks>
+    public async Task MarkCompletedTaskAsync(int messageId, string text, CancellationToken ct) =>
         await bot.EditMessageText(
             settings.OwnerChatId, messageId, $"<s>{Escape(text)}</s>", ParseMode.Html, cancellationToken: ct);
 ```
@@ -1373,7 +1419,7 @@ namespace Assistant.Impl.Telegram;
 /// </summary>
 /// <param name="settings">Validated Telegram configuration, which carries the owner's chat.</param>
 /// <param name="bot">The Telegram client, already pointed at a base address.</param>
-/// <param name="notifier">Where the struck-through edit is delivered on a successful action.</param>
+/// <param name="notifier">Where the completed-task edit is delivered on a successful action.</param>
 /// <param name="actions">Every registered task action, resolved by <see cref="ITaskAction.Key"/>.</param>
 /// <remarks>
 /// The callback query is answered last in every branch, after any edit a successful action
@@ -1440,7 +1486,7 @@ internal sealed class CallbackRouter(
 
         if (result.IsSuccess)
         {
-            await notifier.MarkStruckThroughAsync(messageId, messageText, ct);
+            await notifier.MarkCompletedTaskAsync(messageId, messageText, ct);
         }
 
         var reply = result switch
@@ -2074,7 +2120,7 @@ the action itself, and the edit, are gated on being the owner.
 Malformed callback data and a well-formed but unregistered action key
 produce the identical outcome: a polite "no longer valid" answer, no
 edit, no exception. A successful action's message is edited to show
-its title struck through, through a new INotifier.MarkStruckThroughAsync
+its title struck through, through a new INotifier.MarkCompletedTaskAsync
 that keeps HTML escaping in the one place that already owns it,
 TelegramNotifier. That edit sends no reply_markup at all -- nothing in
 this codebase attaches a keyboard to a message yet, so there is
@@ -2130,11 +2176,11 @@ Claude-Session: https://claude.ai/code/session_01EKjh2GD3CzkKt9aPxibkVF
       `"AAAAAAAAAAAAAAAAAAAAAA=="`), not copied from the production code under test
 
 **Commit 3 (the router):**
-- [ ] `INotifier.MarkStruckThroughAsync` takes `messageId` and `text`, not a chat id — the
+- [ ] `INotifier.MarkCompletedTaskAsync` takes `messageId` and `text`, not a chat id — the
       recipient stays configuration, matching `SendAsync`'s own existing contract
-- [ ] `TelegramNotifier.MarkStruckThroughAsync` reuses the existing private `Escape`, not a
+- [ ] `TelegramNotifier.MarkCompletedTaskAsync` reuses the existing private `Escape`, not a
       duplicate implementation
-- [ ] The `EditMessageText` call inside `MarkStruckThroughAsync` passes no `replyMarkup` argument
+- [ ] The `EditMessageText` call inside `MarkCompletedTaskAsync` passes no `replyMarkup` argument
       at all
 - [ ] `CallbackRouter.HandleAsync`'s owner-check branch still calls `AnswerCallbackQuery` before
       returning — a non-owner's tap is answered, not silently dropped
@@ -2165,7 +2211,7 @@ Claude-Session: https://claude.ai/code/session_01EKjh2GD3CzkKt9aPxibkVF
       `DoneAction` and `CallbackCodec` as plain `<c>` code text, not `<see cref>`, because
       `Assistant.Interfaces` does not and must not reference `Assistant.Impl`
 - [ ] Type and member names are consistent everywhere they appear: `ITaskAction.Key`,
-      `CallbackCodec.Encode`/`TryDecode`, `CallbackRouter`, `MarkStruckThroughAsync`,
+      `CallbackCodec.Encode`/`TryDecode`, `CallbackRouter`, `MarkCompletedTaskAsync`,
       `"That button is no longer valid."`, `"Already done."`, `"I could not find that task."` each
       carry the identical spelling in every step, decision, and commit message that names them
 - [ ] No placeholder text ships inside a source file
