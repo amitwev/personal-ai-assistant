@@ -16,6 +16,11 @@ namespace Assistant.IntegrationTests.Telegram;
 /// </summary>
 /// <param name="postgres">The shared database fixture.</param>
 /// <param name="wireMock">The shared stub API fixture.</param>
+/// <remarks>
+/// <see cref="AsOf"/> is a literal with at most six fractional digits, not
+/// <c>DateTimeOffset.UtcNow</c>, because Postgres <c>timestamptz</c> truncates a value's
+/// hundred-nanosecond ticks to microseconds on read.
+/// </remarks>
 [Collection(IntegrationCollection.Name)]
 public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixture wireMock) : IAsyncLifetime
 {
@@ -24,6 +29,9 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
     private const long StrangerChatId = 999888777L;
     private const int MessageId = 55;
     private const string CallbackQueryId = "cb-1";
+
+    private static readonly DateTimeOffset AsOf =
+        new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
 
     private static readonly TimeSpan AnswerDeadline = TimeSpan.FromSeconds(10);
 
@@ -75,7 +83,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
     public async Task Listener_OwnerTapsDone_CompletesTheTaskAndStrikesThroughTheMessage()
     {
         // Arrange
-        var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
+        var task = BuildReminderTask();
         await postgres.SaveAsync(task);
         var data = CallbackCodec.Encode("done", task.Id);
         await wireMock.SeedCallbackQueryUpdatesAsync(
@@ -107,7 +115,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
     public async Task Listener_DoneTappedOnAnAlreadyCompletedTask_AnswersAlreadyDoneWithoutEditingAgain()
     {
         // Arrange
-        var originalCompletedAt = DateTimeOffset.UtcNow.AddHours(-3);
+        var originalCompletedAt = AsOf.AddHours(-3);
         var task = BuildReminderTask(status: ReminderStatus.Completed, completedAt: originalCompletedAt);
         await postgres.SaveAsync(task);
         var data = CallbackCodec.Encode("done", task.Id);
@@ -160,7 +168,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
     public async Task Listener_StrangerTapsTheButton_AnswersButLeavesTheTaskUntouched()
     {
         // Arrange
-        var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
+        var task = BuildReminderTask();
         await postgres.SaveAsync(task);
         var data = CallbackCodec.Encode("done", task.Id);
         await wireMock.SeedCallbackQueryUpdatesAsync(
