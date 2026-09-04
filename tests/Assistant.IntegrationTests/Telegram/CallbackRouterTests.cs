@@ -1,3 +1,4 @@
+using Assistant.Contracts;
 using Assistant.Impl;
 using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
@@ -85,7 +86,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         // Arrange
         var task = BuildReminderTask();
         await postgres.SaveAsync(task);
-        var data = CallbackCodec.Encode("done", task.Id);
+        var data = CallbackCodec.Encode(TaskActions.Done.Key, task.Id);
         await wireMock.SeedCallbackQueryUpdatesAsync(
             new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, task.Title, data));
 
@@ -118,7 +119,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         var originalCompletedAt = AsOf.AddHours(-3);
         var task = BuildReminderTask(status: ReminderStatus.Completed, completedAt: originalCompletedAt);
         await postgres.SaveAsync(task);
-        var data = CallbackCodec.Encode("done", task.Id);
+        var data = CallbackCodec.Encode(TaskActions.Done.Key, task.Id);
         await wireMock.SeedCallbackQueryUpdatesAsync(
             new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, task.Title, data));
 
@@ -170,7 +171,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         // Arrange
         var task = BuildReminderTask();
         await postgres.SaveAsync(task);
-        var data = CallbackCodec.Encode("done", task.Id);
+        var data = CallbackCodec.Encode(TaskActions.Done.Key, task.Id);
         await wireMock.SeedCallbackQueryUpdatesAsync(
             new InboundCallbackQuery(10, CallbackQueryId, StrangerChatId, MessageId, task.Title, data));
 
@@ -183,5 +184,24 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
 
         var stored = await _repository.FindAsync(task.Id, CancellationToken.None);
         Assert.Equal(ReminderStatus.Pending, stored!.Status);
+    }
+
+    /// <summary>
+    /// When every ITaskAction registered in the real container is resolved from a scope
+    /// Then its key set is exactly the catalogue's declared key set, in both directions.
+    /// </summary>
+    [Fact]
+    public void ITaskAction_RegisteredImplementations_MatchTheCatalogueKeysExactly()
+    {
+        // Arrange
+        using var scope = _provider.CreateScope();
+
+        // Act
+        var resolved = scope.ServiceProvider.GetServices<ITaskAction>();
+
+        // Assert
+        Assert.Equal(
+            TaskActions.All.Select(d => d.Key).Order(),
+            resolved.Select(a => a.Definition.Key).Order());
     }
 }

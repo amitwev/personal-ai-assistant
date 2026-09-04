@@ -14,7 +14,10 @@ namespace Assistant.Impl.Telegram;
 /// <param name="settings">Validated Telegram configuration, which carries the owner's chat.</param>
 /// <param name="bot">The Telegram client, already pointed at a base address.</param>
 /// <param name="notifier">Where the completed-task edit is delivered on a successful action.</param>
-/// <param name="actions">Every registered task action, resolved by <see cref="ITaskAction.Key"/>.</param>
+/// <param name="actions">
+/// Every registered task action, resolved by matching <see cref="TaskActionDefinition.Key"/>
+/// against each one's <see cref="ITaskAction.Definition"/>.
+/// </param>
 /// <remarks>
 /// The callback query is answered last in every branch, after any edit a successful action
 /// triggers, never before -- every reachable path through <see cref="HandleAsync"/> ends with
@@ -68,7 +71,7 @@ internal sealed class CallbackRouter(
             return;
         }
 
-        var action = actions.FirstOrDefault(a => a.Key == actionKey);
+        var action = actions.FirstOrDefault(a => a.Definition.Key == actionKey);
 
         if (action is null)
         {

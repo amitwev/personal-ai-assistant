@@ -10,7 +10,7 @@ namespace Assistant.Impl.Services.Actions;
 internal sealed class DoneAction(ITaskService taskService) : ITaskAction
 {
     /// <inheritdoc/>
-    public string Key => "done";
+    public TaskActionDefinition Definition => TaskActions.Done;
 
     /// <inheritdoc/>
     public Task<Result> ExecuteAsync(Guid taskId, CancellationToken ct) =>

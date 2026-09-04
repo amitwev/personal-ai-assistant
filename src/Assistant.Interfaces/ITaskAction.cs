@@ -6,18 +6,19 @@ namespace Assistant.Interfaces;
 /// One action an inline button's tap can perform on a task.
 /// </summary>
 /// <remarks>
-/// Resolved by <see cref="Key"/> against the callback codec's decoded action segment. A caller
-/// that finds no implementation whose key matches produces a polite reply rather than throwing,
-/// per spec 6.4. <c>DoneAction</c> is the first implementation; snooze, reschedule and edit
-/// actions follow at F11, each adding one more implementation rather than changing this one.
+/// Resolved by matching <see cref="Definition"/>'s <see cref="TaskActionDefinition.Key"/> against
+/// the callback codec's decoded action segment. A caller that finds no implementation whose key
+/// matches produces a polite reply rather than throwing, per spec 6.4. <c>DoneAction</c> is the
+/// first implementation; snooze, reschedule and edit actions follow at F11, each adding one more
+/// implementation rather than changing this one.
 /// </remarks>
 public interface ITaskAction
 {
     /// <summary>
-    /// The action's key, as carried on the wire inside the callback codec.
+    /// This action's entry in the shared catalogue.
     /// </summary>
-    /// <value>Lowercase, for example <c>done</c>.</value>
-    string Key { get; }
+    /// <value>Key, label and description all come from <see cref="TaskActions"/>.</value>
+    TaskActionDefinition Definition { get; }
 
     /// <summary>
     /// Performs the action against the given task.
