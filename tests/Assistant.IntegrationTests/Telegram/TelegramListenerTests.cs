@@ -1,6 +1,7 @@
 using Assistant.Impl;
 using Assistant.Impl.Settings;
 using Assistant.IntegrationTests.Infrastructure;
+using Assistant.Repository;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -9,9 +10,10 @@ namespace Assistant.IntegrationTests.Telegram;
 /// <summary>
 /// Test class for the inbound listener registered via <c>AddAssistantListener</c>.
 /// </summary>
+/// <param name="postgres">The shared database fixture.</param>
 /// <param name="wireMock">The shared stub API fixture.</param>
 [Collection(IntegrationCollection.Name)]
-public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLifetime
+public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixture wireMock) : IAsyncLifetime
 {
     private const string BotToken = "123456:TESTTOKEN";
     private const long OwnerChatId = 100200300L;
@@ -34,6 +36,7 @@ public sealed class TelegramListenerTests(WireMockFixture wireMock) : IAsyncLife
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddAssistantRepository(postgres.ConnectionString);
         services.AddAssistantServices();
         services.AddAssistantTelegram(new TelegramSettings
         {

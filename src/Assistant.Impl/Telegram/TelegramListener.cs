@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot;
@@ -10,7 +11,13 @@ namespace Assistant.Impl.Telegram;
 /// Polls Telegram for inbound updates and dispatches each one to the handlers that claim it.
 /// </summary>
 /// <param name="bot">The Telegram client, already pointed at a base address.</param>
-/// <param name="handlers">Every registered update handler. Each declares the update kind it handles.</param>
+/// <param name="scopeFactory">
+/// Opens one scope per update to resolve the registered handlers, and one further scope at
+/// startup to compute <c>allowedUpdates</c>. Handlers are registered scoped, not singleton, so
+/// they can constructor-inject scoped dependencies directly -- <c>CallbackRouter</c>
+/// resolves <c>ITaskAction</c> implementations that ultimately reach the scoped database context.
+/// See the "Each handler opens its own scope" entry in docs/tech-debt.md.
+/// </param>
 /// <param name="timeProvider">Supplies the delay applied after a failed poll.</param>
 /// <param name="logger">Where a failure is recorded.</param>
 /// <remarks>
@@ -28,7 +35,7 @@ namespace Assistant.Impl.Telegram;
 /// </remarks>
 internal sealed class TelegramListener(
     ITelegramBotClient bot,
-    IEnumerable<ITelegramUpdateHandler> handlers,
+    IServiceScopeFactory scopeFactory,
     TimeProvider timeProvider,
     ILogger<TelegramListener> logger) : BackgroundService
 {
@@ -36,13 +43,22 @@ internal sealed class TelegramListener(
 
     private static readonly TimeSpan PollFailureBackoff = TimeSpan.FromSeconds(5);
 
-    private readonly UpdateType[] _allowedUpdates = handlers.Select(h => h.Handles).Distinct().ToArray();
+    private UpdateType[] _allowedUpdates = [];
 
     private int? _offset;
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        using (var scope = scopeFactory.CreateScope())
+        {
+            _allowedUpdates = scope.ServiceProvider
+                .GetServices<ITelegramUpdateHandler>()
+                .Select(h => h.Handles)
+                .Distinct()
+                .ToArray();
+        }
+
         try
         {
             while (!stoppingToken.IsCancellationRequested)
@@ -89,7 +105,11 @@ internal sealed class TelegramListener(
 
     private async Task DispatchAsync(Update update, CancellationToken ct)
     {
-        foreach (var handler in handlers.Where(h => h.Handles == update.Type))
+        using var scope = scopeFactory.CreateScope();
+
+        foreach (var handler in scope.ServiceProvider
+            .GetServices<ITelegramUpdateHandler>()
+            .Where(h => h.Handles == update.Type))
         {
             try
             {

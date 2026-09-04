@@ -28,6 +28,17 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
     public async Task SendAsync(string text, CancellationToken ct) =>
         await bot.SendMessage(settings.OwnerChatId, Escape(text), ParseMode.Html, cancellationToken: ct);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Renders completion by wrapping the escaped text in an inline &lt;s&gt; element -- this
+    /// adapter's own choice of how to show completion, not part of the interface's contract. F6-3
+    /// must revisit this call once it attaches the first inline keyboard, or a completed reminder
+    /// keeps a dead Done button visible under the struck-through title.
+    /// </remarks>
+    public async Task MarkCompletedTaskAsync(int messageId, string text, CancellationToken ct) =>
+        await bot.EditMessageText(
+            settings.OwnerChatId, messageId, $"<s>{Escape(text)}</s>", ParseMode.Html, cancellationToken: ct);
+
     // "&" must be replaced first. Doing "<" or ">" first and "&" after would re-escape the
     // ampersand that replacement just introduced — "<" becomes "&lt;", then that "&" becomes
     // "&amp;lt;", which renders as the literal text "&lt;" instead of "<".

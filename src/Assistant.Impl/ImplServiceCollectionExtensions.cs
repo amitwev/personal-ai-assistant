@@ -5,6 +5,7 @@ using Assistant.Impl.Ai;
 using Assistant.Impl.Tools;
 using Assistant.Impl.Scheduling;
 using Assistant.Impl.Services;
+using Assistant.Impl.Services.Actions;
 using Assistant.Impl.Services.Jobs;
 using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
@@ -72,11 +73,17 @@ public static class ImplServiceCollectionExtensions
     /// <returns>The same <paramref name="services"/>, for chaining.</returns>
     /// <remarks>
     /// Requires <c>AddAssistantTelegram</c> for the client and the owner's chat id, and
-    /// <c>AddAssistantServices</c> for the <see cref="TimeProvider"/> the failure backoff uses.
+    /// <c>AddAssistantServices</c> for the <see cref="TimeProvider"/> the failure backoff uses and
+    /// the <see cref="ITaskService"/> <see cref="Telegram.CallbackRouter"/>'s actions reach.
+    /// Handlers and task actions are registered scoped, not singleton, so
+    /// <see cref="Telegram.TelegramListener"/> can resolve them from a scope it opens per update;
+    /// see docs/tech-debt.md.
     /// </remarks>
     public static IServiceCollection AddAssistantListener(this IServiceCollection services)
     {
-        services.AddSingleton<ITelegramUpdateHandler, MessageHandler>();
+        services.AddScoped<ITelegramUpdateHandler, MessageHandler>();
+        services.AddScoped<ITelegramUpdateHandler, CallbackRouter>();
+        services.AddScoped<ITaskAction, DoneAction>();
         services.AddHostedService<TelegramListener>();
         return services;
     }

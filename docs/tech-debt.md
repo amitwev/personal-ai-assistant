@@ -132,3 +132,12 @@ inside an unrelated feature branch. F6 is not that — F6 is the branch that cre
 the second handler, in the first place, so the pull request that adds `ICallbackHandler` is
 also the right place to move the scope into `TelegramListener` and simplify `MessageHandler`
 to match.
+
+**Resolved at F6-2.** `TelegramListener.DispatchAsync` opens one scope per update and resolves
+`ITelegramUpdateHandler` from it; `MessageHandler` is back to plain constructor injection of
+`IAiClient`; both are registered scoped. One correction to this entry's own text, made in the same
+commit that resolves it: the second handler this entry predicted, `CallbackRouter`, shipped without
+a paired `ICallbackHandler` interface: nothing in this design routes a callback query a second,
+different way, so a router-level interface with one implementation would be exactly the guess this
+project has already twice reversed the cost of writing. `CallbackRouter` implements
+`ITelegramUpdateHandler` directly, the same as `MessageHandler` does.

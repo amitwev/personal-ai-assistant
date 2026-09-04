@@ -256,6 +256,121 @@ public sealed class WireMockFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Makes the stub serve the given callback-query updates to the next getUpdates poll.
+    /// </summary>
+    /// <param name="updates">The updates to serve, in the order Telegram would.</param>
+    /// <returns>A task that completes once both mappings are installed.</returns>
+    /// <remarks>
+    /// Shares <see cref="SeedUpdatesAsync"/>'s own two-mapping, drained-by-offset shape and its
+    /// two mapping ids: a test seeds one call or the other, never both, so there is nothing to
+    /// double-book.
+    /// </remarks>
+    public async Task SeedCallbackQueryUpdatesAsync(params InboundCallbackQuery[] updates)
+    {
+        var pending = new JsonArray(updates.Select(u =>
+        {
+            var message = new JsonObject
+            {
+                ["message_id"] = u.MessageId,
+                ["date"] = 1756000000L,
+                ["chat"] = new JsonObject { ["id"] = u.ChatId, ["type"] = "private" },
+            };
+
+            if (u.MessageText is not null)
+            {
+                message["text"] = u.MessageText;
+            }
+
+            var callbackQuery = new JsonObject
+            {
+                ["id"] = u.CallbackQueryId,
+                ["from"] = new JsonObject { ["id"] = u.ChatId, ["is_bot"] = false, ["first_name"] = "Owner" },
+                ["message"] = message,
+                ["chat_instance"] = "test-instance",
+            };
+
+            if (u.Data is not null)
+            {
+                callbackQuery["data"] = u.Data;
+            }
+
+            return (JsonNode)new JsonObject { ["update_id"] = u.UpdateId, ["callback_query"] = callbackQuery };
+        }).ToArray());
+
+        var nextOffset = updates.Max(u => u.UpdateId) + 1;
+
+        await PutMappingAsync(PendingUpdatesMapping, "/bot*/getUpdates", priority: 10,
+            bodyPattern: null, statusCode: 200,
+            responseBody: new JsonObject { ["ok"] = true, ["result"] = pending }, delayMs: null);
+
+        await PutMappingAsync(DrainedUpdatesMapping, "/bot*/getUpdates", priority: 1,
+            bodyPattern: $"*\"offset\":{nextOffset}*", statusCode: 200,
+            responseBody: new JsonObject { ["ok"] = true, ["result"] = new JsonArray() },
+            delayMs: 1000);
+    }
+
+    /// <summary>
+    /// Returns the answer-callback-query requests the stub received, in order.
+    /// </summary>
+    /// <returns>One payload per captured request.</returns>
+    public async Task<IReadOnlyList<AnswerCallbackQueryPayload>> AnsweredCallbacksAsync()
+    {
+        var entries = await _http.GetFromJsonAsync<List<AdminLogEntry>>($"{Url}/__admin/requests")
+                      ?? [];
+
+        return entries
+            .Where(entry => entry.Request.Path.EndsWith("/answerCallbackQuery", StringComparison.Ordinal)
+                            && entry.Request.Method == "POST")
+            .Select(entry => JsonSerializer.Deserialize<AnswerCallbackQueryPayload>(entry.Request.Body)!)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Returns the edit-message-text requests the stub received, in order.
+    /// </summary>
+    /// <returns>One payload per captured request.</returns>
+    public async Task<IReadOnlyList<EditMessageTextPayload>> EditedMessagesAsync()
+    {
+        var entries = await _http.GetFromJsonAsync<List<AdminLogEntry>>($"{Url}/__admin/requests")
+                      ?? [];
+
+        return entries
+            .Where(entry => entry.Request.Path.EndsWith("/editMessageText", StringComparison.Ordinal)
+                            && entry.Request.Method == "POST")
+            .Select(entry => JsonSerializer.Deserialize<EditMessageTextPayload>(entry.Request.Body)!)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Waits until the stub has received at least the given number of answered callback queries.
+    /// </summary>
+    /// <param name="count">How many answers to wait for.</param>
+    /// <param name="timeout">How long to wait before giving up.</param>
+    /// <returns>Every answer received, which may be more than requested.</returns>
+    /// <exception cref="TimeoutException">Too few answers arrived in time.</exception>
+    public async Task<IReadOnlyList<AnswerCallbackQueryPayload>> WaitForAnsweredCallbacksAsync(
+        int count, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var answered = await AnsweredCallbacksAsync();
+
+            if (answered.Count >= count)
+            {
+                return answered;
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException(
+            $"Expected at least {count} answered callback(s) within {timeout.TotalSeconds:0.#}s; "
+            + $"got {(await AnsweredCallbacksAsync()).Count}.");
+    }
+
+    /// <summary>
     /// Releases the HTTP client.
     /// </summary>
     /// <returns>A completed task.</returns>
@@ -428,6 +543,63 @@ public sealed record AiFunctionPayload(
     /// Any field on the wire that this record does not name.
     /// </summary>
     /// <value>Null when the function carried exactly the two expected fields.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
+
+/// <summary>
+/// An inbound Telegram callback-query update, as
+/// <see cref="WireMockFixture.SeedCallbackQueryUpdatesAsync"/> serves it.
+/// </summary>
+/// <param name="UpdateId">Telegram's identifier for the update.</param>
+/// <param name="CallbackQueryId">Telegram's identifier for the callback query itself.</param>
+/// <param name="ChatId">The chat the tap appears to come from.</param>
+/// <param name="MessageId">The identifier of the message the tapped button was attached to.</param>
+/// <param name="MessageText">
+/// The current text of that message, or null when Telegram considers the message too old to
+/// carry its content.
+/// </param>
+/// <param name="Data">
+/// The callback data carried on the tapped button, or null when the button was a game button
+/// (never true for this bot, which sends no game buttons).
+/// </param>
+public sealed record InboundCallbackQuery(
+    int UpdateId, string CallbackQueryId, long ChatId, int MessageId, string? MessageText, string? Data);
+
+/// <summary>
+/// The body of a Telegram <c>answerCallbackQuery</c> request.
+/// </summary>
+/// <param name="CallbackQueryId">The callback query being answered.</param>
+/// <param name="Text">The toast text shown to the tapper, or null when none was sent.</param>
+public sealed record AnswerCallbackQueryPayload(
+    [property: JsonPropertyName("callback_query_id")] string CallbackQueryId,
+    [property: JsonPropertyName("text")] string? Text)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>Null when the request carried exactly the named fields.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
+
+/// <summary>
+/// The body of a Telegram <c>editMessageText</c> request.
+/// </summary>
+/// <param name="ChatId">The chat the edited message lives in.</param>
+/// <param name="MessageId">The message being edited.</param>
+/// <param name="Text">The replacement text as it went over the wire.</param>
+/// <param name="ParseMode">How Telegram is told to interpret the text.</param>
+public sealed record EditMessageTextPayload(
+    [property: JsonPropertyName("chat_id")] long ChatId,
+    [property: JsonPropertyName("message_id")] int MessageId,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("parse_mode")] string ParseMode)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>Null when the request carried exactly the named fields.</value>
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; init; }
 }
