@@ -22,7 +22,18 @@ namespace Assistant.Impl.Telegram;
 /// The callback query is answered last in every branch, after any edit a successful action
 /// triggers, never before -- every reachable path through <see cref="HandleAsync"/> ends with
 /// exactly one call to <see cref="ITelegramBotClient"/>'s answer method and nothing after it, so
-/// observing that one call is enough to know the whole update has been fully handled.
+/// observing that one call is enough to know the whole update has been fully handled. The sole
+/// exception is the first guard's bare early return, which answers nothing because there is no
+/// callback query to answer at all -- and that branch is unreachable in practice, since
+/// <see cref="TelegramListener.DispatchAsync"/> only invokes handlers whose <see cref="Handles"/>
+/// matches the update's own type, and this handler declares <see cref="UpdateType.CallbackQuery"/>.
+/// <para>
+/// <c>Message.Text</c> is bound with a plain <c>var</c>, not a null-checked pattern, because
+/// Telegram omits a message's text once it judges the message too old to still carry content --
+/// exactly the age an old reminder's Done button can reach in chat history. The action still
+/// runs and the query is still answered in that case; only the completed-task edit is skipped,
+/// since there is no text left to strike through.
+/// </para>
 /// <para>
 /// The owner check lives inline here, the same as <see cref="MessageHandler"/>'s own remarks
 /// explain: nothing in <see cref="ITelegramUpdateHandler"/> or <see cref="TelegramListener"/>
@@ -49,13 +60,19 @@ internal sealed class CallbackRouter(
     /// <inheritdoc/>
     public async Task HandleAsync(Update update, CancellationToken ct)
     {
-        if (update.CallbackQuery is not
+        if (update.CallbackQuery is not { } callbackQuery)
+        {
+            return;
+        }
+
+        if (callbackQuery is not
             {
                 Id: var callbackQueryId,
                 Data: { } data,
-                Message: { Chat.Id: var chatId, Id: var messageId, Text: { } messageText },
+                Message: { Chat.Id: var chatId, Id: var messageId, Text: var messageText },
             })
         {
+            await bot.AnswerCallbackQuery(callbackQuery.Id, ThatButtonIsNoLongerValid, cancellationToken: ct);
             return;
         }
 
@@ -81,7 +98,7 @@ internal sealed class CallbackRouter(
 
         var result = await action.ExecuteAsync(taskId, ct);
 
-        if (result.IsSuccess)
+        if (result.IsSuccess && messageText is not null)
         {
             await notifier.MarkCompletedTaskAsync(messageId, messageText, ct);
         }

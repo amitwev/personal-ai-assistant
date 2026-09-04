@@ -267,23 +267,34 @@ public sealed class WireMockFixture : IAsyncLifetime
     /// </remarks>
     public async Task SeedCallbackQueryUpdatesAsync(params InboundCallbackQuery[] updates)
     {
-        var pending = new JsonArray(updates.Select(u => (JsonNode)new JsonObject
+        var pending = new JsonArray(updates.Select(u =>
         {
-            ["update_id"] = u.UpdateId,
-            ["callback_query"] = new JsonObject
+            var message = new JsonObject
+            {
+                ["message_id"] = u.MessageId,
+                ["date"] = 1756000000L,
+                ["chat"] = new JsonObject { ["id"] = u.ChatId, ["type"] = "private" },
+            };
+
+            if (u.MessageText is not null)
+            {
+                message["text"] = u.MessageText;
+            }
+
+            var callbackQuery = new JsonObject
             {
                 ["id"] = u.CallbackQueryId,
                 ["from"] = new JsonObject { ["id"] = u.ChatId, ["is_bot"] = false, ["first_name"] = "Owner" },
-                ["message"] = new JsonObject
-                {
-                    ["message_id"] = u.MessageId,
-                    ["date"] = 1756000000L,
-                    ["chat"] = new JsonObject { ["id"] = u.ChatId, ["type"] = "private" },
-                    ["text"] = u.MessageText,
-                },
+                ["message"] = message,
                 ["chat_instance"] = "test-instance",
-                ["data"] = u.Data,
-            },
+            };
+
+            if (u.Data is not null)
+            {
+                callbackQuery["data"] = u.Data;
+            }
+
+            return (JsonNode)new JsonObject { ["update_id"] = u.UpdateId, ["callback_query"] = callbackQuery };
         }).ToArray());
 
         var nextOffset = updates.Max(u => u.UpdateId) + 1;
@@ -544,10 +555,16 @@ public sealed record AiFunctionPayload(
 /// <param name="CallbackQueryId">Telegram's identifier for the callback query itself.</param>
 /// <param name="ChatId">The chat the tap appears to come from.</param>
 /// <param name="MessageId">The identifier of the message the tapped button was attached to.</param>
-/// <param name="MessageText">The current text of that message.</param>
-/// <param name="Data">The callback data carried on the tapped button.</param>
+/// <param name="MessageText">
+/// The current text of that message, or null when Telegram considers the message too old to
+/// carry its content.
+/// </param>
+/// <param name="Data">
+/// The callback data carried on the tapped button, or null when the button was a game button
+/// (never true for this bot, which sends no game buttons).
+/// </param>
 public sealed record InboundCallbackQuery(
-    int UpdateId, string CallbackQueryId, long ChatId, int MessageId, string MessageText, string Data);
+    int UpdateId, string CallbackQueryId, long ChatId, int MessageId, string? MessageText, string? Data);
 
 /// <summary>
 /// The body of a Telegram <c>answerCallbackQuery</c> request.

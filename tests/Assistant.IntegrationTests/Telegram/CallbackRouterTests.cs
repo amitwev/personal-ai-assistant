@@ -187,6 +187,59 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
     }
 
     /// <summary>
+    /// When the owner taps Done on a reminder whose message is too old for Telegram to carry its text
+    /// Then the task is still completed
+    /// And the callback query is answered
+    /// And no edit is attempted.
+    /// </summary>
+    /// <remarks>
+    /// Telegram also sends <c>date</c> 0 on such a message, but the router never reads
+    /// <c>Date</c>, so this fixture reproduces only the field the behaviour actually depends on.
+    /// </remarks>
+    [Fact]
+    public async Task Listener_DoneTappedOnATooOldMessage_StillCompletesAndAnswersWithoutEditing()
+    {
+        // Arrange
+        var task = BuildReminderTask();
+        await postgres.SaveAsync(task);
+        var data = CallbackCodec.Encode(TaskActions.Done.Key, task.Id);
+        await wireMock.SeedCallbackQueryUpdatesAsync(
+            new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, null, data));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
+        Assert.Equal(CallbackQueryId, Assert.Single(answered).CallbackQueryId);
+        Assert.Empty(await wireMock.EditedMessagesAsync());
+
+        var stored = await _repository.FindAsync(task.Id, CancellationToken.None);
+        Assert.Equal(ReminderStatus.Completed, stored!.Status);
+    }
+
+    /// <summary>
+    /// When a callback query arrives carrying no data
+    /// Then it is still answered
+    /// And nothing is edited.
+    /// </summary>
+    [Fact]
+    public async Task Listener_CallbackQueryCarriesNoData_StillAnswersButEditsNothing()
+    {
+        // Arrange
+        await wireMock.SeedCallbackQueryUpdatesAsync(
+            new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, "call the bank", null));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
+        Assert.Equal(CallbackQueryId, Assert.Single(answered).CallbackQueryId);
+        Assert.Empty(await wireMock.EditedMessagesAsync());
+    }
+
+    /// <summary>
     /// When every ITaskAction registered in the real container is resolved from a scope
     /// Then its key set is exactly the catalogue's declared key set, in both directions.
     /// </summary>
