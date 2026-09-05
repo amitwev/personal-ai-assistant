@@ -48,8 +48,11 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
     /// </remarks>
     public async Task SendTaskAsync(Guid taskId, string text, CancellationToken ct)
     {
-        var keyboard = new InlineKeyboardMarkup(TaskActions.All
-            .Select(a => InlineKeyboardButton.WithCallbackData(a.Label, CallbackCodec.Encode(a.Key, taskId))));
+        var keyboard = new InlineKeyboardMarkup(
+            InlineKeyboardButton.WithCallbackData(
+                TaskActions.Done.Label,
+                CallbackCodec.Encode(TaskActions.Done.Key, taskId))
+        );
 
         await bot.SendMessage(
             settings.OwnerChatId, Escape(text), ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
