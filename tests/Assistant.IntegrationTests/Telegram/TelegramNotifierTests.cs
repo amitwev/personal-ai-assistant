@@ -51,7 +51,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
     public async Task SendAsync_Text_PostsOneMessageToTheOwner(string text)
     {
         // Arrange
-        var expected = new SendMessagePayload(OwnerChatId, text, "Html");
+        var expected = new SendMessagePayload(OwnerChatId, text, "Html", null);
 
         // Act
         await _sut.SendAsync(text, CancellationToken.None);
@@ -78,7 +78,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
     {
         // Arrange
         const string text = "Meet R&D <at 5> & confirm";
-        var expected = new SendMessagePayload(OwnerChatId, "Meet R&amp;D &lt;at 5&gt; &amp; confirm", "Html");
+        var expected = new SendMessagePayload(OwnerChatId, "Meet R&amp;D &lt;at 5&gt; &amp; confirm", "Html", null);
 
         // Act
         await _sut.SendAsync(text, CancellationToken.None);
@@ -108,7 +108,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
     {
         // Arrange
         const string text = "שלום, נא להתקשר לבנק";
-        var expected = new SendMessagePayload(OwnerChatId, text, "Html");
+        var expected = new SendMessagePayload(OwnerChatId, text, "Html", null);
 
         // Act
         await _sut.SendAsync(text, CancellationToken.None);

@@ -1,3 +1,4 @@
+using Assistant.Contracts;
 using Assistant.Impl.Settings;
 using Assistant.Interfaces;
 using Telegram.Bot;
@@ -34,6 +35,25 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
     /// <inheritdoc/>
     public async Task SendAsync(string text, CancellationToken ct) =>
         await bot.SendMessage(settings.OwnerChatId, Escape(text), ParseMode.Html, cancellationToken: ct);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Builds one button per entry in <c>TaskActions.All</c>, in one row -- there is exactly one
+    /// entry, <c>Done</c>, until F11 adds more. Each button's callback data is
+    /// <c>CallbackCodec.Encode</c> applied to that action's key and <paramref name="taskId"/>,
+    /// the same encoding <c>CallbackRouter</c> decodes on a tap. A button's label is sent as-is:
+    /// <c>parse_mode</c> governs the message body, not a button's text, which Telegram carries as
+    /// a plain JSON string rather than parsed markup -- so a future label containing "&amp;" or
+    /// "&lt;" would still need no escaping here.
+    /// </remarks>
+    public async Task SendTaskAsync(Guid taskId, string text, CancellationToken ct)
+    {
+        var keyboard = new InlineKeyboardMarkup(TaskActions.All
+            .Select(a => InlineKeyboardButton.WithCallbackData(a.Label, CallbackCodec.Encode(a.Key, taskId))));
+
+        await bot.SendMessage(
+            settings.OwnerChatId, Escape(text), ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
+    }
 
     /// <inheritdoc/>
     /// <remarks>

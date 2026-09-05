@@ -1,5 +1,7 @@
+using Assistant.Contracts;
 using Assistant.Impl;
 using Assistant.Impl.Settings;
+using Assistant.Impl.Telegram;
 using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
 using Assistant.Repository;
@@ -63,6 +65,31 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
         // Assert
         var sent = Assert.Single(await wireMock.SentMessagesAsync());
         Assert.Equal(task.Title, sent.Text);
+    }
+
+    /// <summary>
+    /// When a task is due
+    /// And the job runs
+    /// Then the reminder carries exactly one button
+    /// And that button's callback data decodes to the same task
+    /// And its label is the catalogue's Done label.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_TaskIsDue_AttachesTheDoneButtonForThatTask()
+    {
+        // Arrange
+        var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
+        await postgres.SaveAsync(task);
+
+        // Act
+        await _sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        var sent = Assert.Single(await wireMock.SentMessagesAsync());
+        var row = Assert.Single(sent.ReplyMarkup!.InlineKeyboard);
+        var button = Assert.Single(row);
+        Assert.Equal(TaskActions.Done.Label, button.Text);
+        Assert.Equal(CallbackCodec.Encode(TaskActions.Done.Key, task.Id), button.CallbackData);
     }
 
     /// <summary>

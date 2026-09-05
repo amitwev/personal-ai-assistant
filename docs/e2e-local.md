@@ -257,6 +257,15 @@ Seed a due row the same way as step 4 above, wait up to 30 seconds, and the remi
 on your phone instead of in the stub's request log. The at-most-once check in step 7 applies
 here too — it is worth doing once against real Telegram, not only against the stub.
 
+The reminder now carries a Done button. Tap it: the title gets struck through and the button
+disappears -- Telegram's own UI removing it is the proof that `MarkCompletedTaskAsync`'s explicit
+empty keyboard actually reached the app, not just the stub's request log in the walkthrough above.
+This is the one step in this file a test suite cannot substitute for: `CallbackRouterTests` and
+`TelegramNotifierTests` already prove every wire shape byte for byte, but only tapping a real
+button on a real phone proves Telegram itself renders one. This step is the owner's own to run --
+no agent may run the worker against real Telegram (it needs a real bot token and sends a real
+message) -- and it is F6's own `observable` requirement (backlog §1).
+
 ## Troubleshooting
 
 **`System.ArgumentException: Bot token invalid` at startup.** The token is not shaped like

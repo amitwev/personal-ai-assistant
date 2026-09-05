@@ -450,16 +450,18 @@ public sealed class WireMockFixture : IAsyncLifetime
 /// <param name="ChatId">The recipient.</param>
 /// <param name="Text">The message body as it went over the wire.</param>
 /// <param name="ParseMode">How Telegram is told to interpret the text.</param>
+/// <param name="ReplyMarkup">The keyboard attached, or null when the request carried none.</param>
 public sealed record SendMessagePayload(
     [property: JsonPropertyName("chat_id")] long ChatId,
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("parse_mode")] string ParseMode)
+    [property: JsonPropertyName("parse_mode")] string ParseMode,
+    [property: JsonPropertyName("reply_markup")] ReplyMarkupPayload? ReplyMarkup)
 {
     /// <summary>
     /// Any field on the wire that this record does not name.
     /// </summary>
     /// <value>
-    /// Null when the request carried exactly the three expected fields. Populated otherwise, which
+    /// Null when the request carried exactly the four expected fields. Populated otherwise, which
     /// makes <c>Assert.Equivalent(strict: true)</c> fail — without this, extra fields are silently
     /// discarded during deserialisation and the assertion cannot see them.
     /// </value>
