@@ -271,7 +271,7 @@ carrying the task's title within the tick interval; the row was marked sent and 
 redelivered it. The same check against the real Telegram API is still owed by the repository's
 owner, since it needs their bot token.
 
-**F6 · Complete a task from a button · observable** — spec §6.4
+**F6 · Complete a task from a button · observable** — spec §6.4 · **done**
 `ITaskAction` + `DoneAction`, `CallbackRouter`, the `v1:<action>:<id>` callback codec, in-place
 message edit, and `ITaskService.CompleteAsync`. `ReminderTask` regains `CompletedAt`, which also
 brings back the `ck_completed_consistency` check constraint. Depends on F7's `TelegramListener`: a
@@ -291,6 +291,16 @@ query is always answered.
   entry's routing and answering machinery), F6-3 (the button itself). F6 stays open, unmet by the
   `observable` tag, until F6-3 lands — see F6-1's and F6-2's own plans for why the button ships
   last.
+*Settled at F6-3:*
+- **The button exists.** `INotifier.SendTaskAsync` attaches the catalogue's `Done` button to
+  the message `DueReminderJob` sends, built directly rather than by iterating `TaskActions.All`
+  — `All` has exactly one entry today, and the `IEnumerable` overload that iterating would
+  need fixes the layout at one row, a call that belongs to F11. `MarkCompletedTaskAsync` now sends
+  an explicit empty keyboard on completion, so a struck-through reminder does not keep a dead
+  button under it. This is the first inline keyboard anywhere in this repository's history.
+- **F6 is closed.** All three pull requests (F6-1, F6-2, F6-3) have landed, and the `observable`
+  tag is met: `docs/e2e-local.md`'s "Walkthrough against real Telegram" section carries the
+  owner's own manual proof.
 
 ### Capture path — the flow you described
 
