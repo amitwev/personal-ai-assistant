@@ -1,16 +1,19 @@
+using System.Globalization;
 using Assistant.Contracts;
 using Assistant.Interfaces;
 
 namespace Assistant.Impl.Services;
 
 /// <summary>
-/// Resolves wall-clock times against the single zone the assistant is configured for.
+/// Resolves wall-clock text against the single zone the assistant is configured for.
 /// </summary>
 /// <param name="zone">The zone every wall-clock time is read in.</param>
 /// <param name="timeProvider">The clock the past and future guards judge against.</param>
 internal sealed class LocalTimeResolver(TimeZoneInfo zone, TimeProvider timeProvider)
     : ILocalTimeResolver
 {
+    private const string WallClockFormat = "yyyy-MM-ddTHH:mm:ss";
+
     private static readonly TimeSpan PastTolerance = TimeSpan.FromMinutes(1);
 
     private const int MaxYearsAhead = 2;
@@ -23,9 +26,14 @@ internal sealed class LocalTimeResolver(TimeZoneInfo zone, TimeProvider timeProv
     public string ZoneId => zone.Id;
 
     /// <inheritdoc/>
-    public Result<DateTimeOffset> Resolve(DateTime local)
+    public Result<DateTimeOffset> Resolve(string local)
     {
-        var wall = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        if (!DateTime.TryParseExact(
+                local, WallClockFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var wall))
+        {
+            return Result<DateTimeOffset>.Failure(ErrorCode.DueTimeUnparseable);
+        }
+
         // Falling back always lowers the offset, so the larger of an ambiguous reading's two
         // offsets is its first occurrence. GetUtcOffset and ConvertTimeToUtc both hand back the
         // second. A reading inside a spring-forward gap needs no such handling: GetUtcOffset

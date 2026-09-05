@@ -30,7 +30,7 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverAt("2026-01-01T00:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall(local));
+        var result = resolver.Resolve(local);
 
         // Assert
         Assert.Equal(Instant(expectedUtc), result.Value);
@@ -52,7 +52,7 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverAt("2026-01-01T00:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall("2026-08-17T10:00:00"));
+        var result = resolver.Resolve("2026-08-17T10:00:00");
 
         // Assert
         Assert.Equal(TimeSpan.Zero, result.Value.Offset);
@@ -70,7 +70,7 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverAt("2026-08-17T07:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall("2026-08-17T09:58:00"));
+        var result = resolver.Resolve("2026-08-17T09:58:00");
 
         // Assert
         Assert.Equal(ErrorCode.DueTimeInPast, result.Error);
@@ -88,7 +88,7 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverAt("2026-08-17T07:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall("2026-08-17T09:59:00"));
+        var result = resolver.Resolve("2026-08-17T09:59:00");
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -106,7 +106,7 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverAt("2026-08-17T07:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall("2028-08-17T10:01:00"));
+        var result = resolver.Resolve("2028-08-17T10:01:00");
 
         // Assert
         Assert.Equal(ErrorCode.DueTimeTooFarAhead, result.Error);
@@ -124,7 +124,7 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverAt("2026-08-17T07:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall("2028-08-17T10:00:00"));
+        var result = resolver.Resolve("2028-08-17T10:00:00");
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -153,7 +153,7 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverIn(zoneId, "2026-01-01T00:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall(local));
+        var result = resolver.Resolve(local);
 
         // Assert
         Assert.Equal(Instant(expectedUtc), result.Value);
@@ -177,7 +177,7 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverIn(zoneId, "2026-01-01T00:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall(local));
+        var result = resolver.Resolve(local);
 
         // Assert
         Assert.Equal(Instant(expectedUtc), result.Value);
@@ -202,10 +202,41 @@ public sealed class LocalTimeResolverTests
         var resolver = ResolverAt("2026-01-01T00:00:00Z");
 
         // Act
-        var result = resolver.Resolve(Wall(local));
+        var result = resolver.Resolve(local);
 
         // Assert
         Assert.Equal(Instant(expectedUtc), result.Value);
+    }
+
+    /// <summary>
+    /// When a due time's text does not match the exact wall-clock shape the model is asked to
+    /// supply
+    /// And it is resolved
+    /// Then it is refused, whether the text is nonsense or merely names an instant of its own.
+    /// </summary>
+    /// <param name="local">Text that is not a bare wall-clock reading.</param>
+    /// <remarks>
+    /// A trailing <c>Z</c> or an explicit offset is deliberately refused rather than stripped and
+    /// honoured: this project's times are always wall-clock readings with no instant of their
+    /// own until this method assigns one, so text that already claims an instant is a different
+    /// shape entirely, not a lenient variant of the expected one.
+    /// </remarks>
+    [Theory]
+    [InlineData("not a date")]
+    [InlineData("")]
+    [InlineData("2026-08-17")]
+    [InlineData("2026-08-17T10:00:00Z")]
+    [InlineData("2026-08-17T10:00:00+02:00")]
+    public void Resolve_TextDoesNotMatchTheExpectedShape_IsRefused(string local)
+    {
+        // Arrange
+        var resolver = ResolverAt("2026-01-01T00:00:00Z");
+
+        // Act
+        var result = resolver.Resolve(local);
+
+        // Assert
+        Assert.Equal(ErrorCode.DueTimeUnparseable, result.Error);
     }
 
     /// <summary>
@@ -248,9 +279,6 @@ public sealed class LocalTimeResolverTests
 
     private static LocalTimeResolver ResolverAt(string utcNow) =>
         ResolverIn("Asia/Jerusalem", utcNow);
-
-    private static DateTime Wall(string local) =>
-        DateTime.Parse(local, CultureInfo.InvariantCulture);
 
     private static DateTimeOffset Instant(string utc) =>
         DateTimeOffset.Parse(utc, CultureInfo.InvariantCulture);
