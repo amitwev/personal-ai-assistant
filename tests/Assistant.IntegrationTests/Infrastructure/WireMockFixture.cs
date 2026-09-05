@@ -590,16 +590,52 @@ public sealed record AnswerCallbackQueryPayload(
 /// <param name="MessageId">The message being edited.</param>
 /// <param name="Text">The replacement text as it went over the wire.</param>
 /// <param name="ParseMode">How Telegram is told to interpret the text.</param>
+/// <param name="ReplyMarkup">The keyboard attached to the edit, or null when none was sent.</param>
 public sealed record EditMessageTextPayload(
     [property: JsonPropertyName("chat_id")] long ChatId,
     [property: JsonPropertyName("message_id")] int MessageId,
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("parse_mode")] string ParseMode)
+    [property: JsonPropertyName("parse_mode")] string ParseMode,
+    [property: JsonPropertyName("reply_markup")] ReplyMarkupPayload? ReplyMarkup)
 {
     /// <summary>
     /// Any field on the wire that this record does not name.
     /// </summary>
     /// <value>Null when the request carried exactly the named fields.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
+
+/// <summary>
+/// The <c>reply_markup</c> object carried on a <c>sendMessage</c> or <c>editMessageText</c> request.
+/// </summary>
+/// <param name="InlineKeyboard">
+/// Every row of buttons, outer list first -- empty when the message carries no buttons at all.
+/// </param>
+public sealed record ReplyMarkupPayload(
+    [property: JsonPropertyName("inline_keyboard")] IReadOnlyList<IReadOnlyList<InlineButtonPayload>> InlineKeyboard)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>Null when the object carried exactly the named field.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
+
+/// <summary>
+/// One inline button within a captured <c>reply_markup</c>.
+/// </summary>
+/// <param name="Text">The label shown on the button.</param>
+/// <param name="CallbackData">The callback data carried on a tap.</param>
+public sealed record InlineButtonPayload(
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("callback_data")] string CallbackData)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>Null when the button carried exactly the two named fields.</value>
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; init; }
 }

@@ -32,12 +32,9 @@ public interface INotifier
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task that completes once the edit has been accepted.</returns>
     /// <remarks>
-    /// Sends no keyboard instruction, so whatever inline keyboard the message already carries, if
-    /// any, is left exactly as it is -- there is nothing to clear yet, because nothing in this
-    /// codebase attaches a keyboard to a message before this method might edit it. F6-3, which
-    /// attaches the first one, must revisit this call to pass an explicit empty keyboard, or a
-    /// completed reminder keeps its dead Done button visible under a message that already shows
-    /// the task as done.
+    /// Sends an explicit empty keyboard, clearing whatever inline keyboard the message already
+    /// carries -- see <c>TelegramNotifier.MarkCompletedTaskAsync</c> for why an empty keyboard is
+    /// not simply omitting the argument.
     /// </remarks>
     Task MarkCompletedTaskAsync(int messageId, string text, CancellationToken ct);
 }

@@ -116,4 +116,33 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
         // Assert
         Assert.Equivalent(expected, Assert.Single(await wireMock.SentMessagesAsync()), strict: true);
     }
+
+    /// <summary>
+    /// When a previously sent message is marked complete
+    /// And its title contains "&amp;", "&lt;" and "&gt;"
+    /// Then the edit escapes all three in order inside the struck-through wrapper.
+    /// </summary>
+    /// <remarks>
+    /// The expected string below was worked out by hand, the same discipline
+    /// <see cref="SendAsync_TextContainsAngleBracketsAndAmpersand_EscapesAllThreeInOrder"/> already
+    /// applies. The expected <see cref="ReplyMarkupPayload"/> is asserted here only because
+    /// <c>strict: true</c> compares the whole payload -- this test's own subject is escaping, not
+    /// the empty keyboard, which <c>CallbackRouterTests</c> already proves through a real tap.
+    /// </remarks>
+    [Fact]
+    public async Task MarkCompletedTaskAsync_TextContainsAngleBracketsAndAmpersand_EscapesAllThreeInOrder()
+    {
+        // Arrange
+        const int messageId = 42;
+        const string text = "Meet R&D <at 5> & confirm";
+        var expected = new EditMessageTextPayload(
+            OwnerChatId, messageId, "<s>Meet R&amp;D &lt;at 5&gt; &amp; confirm</s>", "Html",
+            new ReplyMarkupPayload([]));
+
+        // Act
+        await _sut.MarkCompletedTaskAsync(messageId, text, CancellationToken.None);
+
+        // Assert
+        Assert.Equivalent(expected, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);
+    }
 }

@@ -98,7 +98,8 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         var expectedAnswer = new AnswerCallbackQueryPayload(CallbackQueryId, null);
         Assert.Equivalent(expectedAnswer, Assert.Single(answered), strict: true);
 
-        var expectedEdit = new EditMessageTextPayload(OwnerChatId, MessageId, $"<s>{task.Title}</s>", "Html");
+        var expectedEdit = new EditMessageTextPayload(
+            OwnerChatId, MessageId, $"<s>{task.Title}</s>", "Html", new ReplyMarkupPayload([]));
         Assert.Equivalent(expectedEdit, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);
 
         var stored = await _repository.FindAsync(task.Id, CancellationToken.None);
