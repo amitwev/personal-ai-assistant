@@ -58,4 +58,7 @@ internal sealed class LocalTimeResolver(TimeZoneInfo zone, TimeProvider timeProv
 
         return Result<DateTimeOffset>.Success(instant);
     }
+
+    /// <inheritdoc/>
+    public DateTimeOffset ToLocal(DateTimeOffset utc) => TimeZoneInfo.ConvertTime(utc, zone);
 }

@@ -274,6 +274,24 @@ public sealed class LocalTimeResolverTests
         Assert.Equal("Australia/Lord_Howe", zoneId);
     }
 
+    /// <summary>
+    /// When a stored UTC instant is converted back to local text
+    /// Then it carries the wall-clock reading and offset in force in the configured zone at
+    /// that instant.
+    /// </summary>
+    [Fact]
+    public void ToLocal_AnyInstant_ReturnsTheWallClockReadingInTheConfiguredZone()
+    {
+        // Arrange
+        var resolver = ResolverAt("2026-01-01T00:00:00Z");
+
+        // Act
+        var local = resolver.ToLocal(Instant("2026-08-26T07:00:00Z"));
+
+        // Assert
+        Assert.Equal(new DateTimeOffset(2026, 8, 26, 10, 0, 0, TimeSpan.FromHours(3)), local);
+    }
+
     private static LocalTimeResolver ResolverIn(string zoneId, string utcNow) =>
         new(TimeZoneInfo.FindSystemTimeZoneById(zoneId), new FakeTimeProvider(Instant(utcNow)));
 
