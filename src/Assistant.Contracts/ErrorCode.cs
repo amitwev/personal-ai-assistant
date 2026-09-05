@@ -50,4 +50,21 @@ public enum ErrorCode
     /// The task has already been completed.
     /// </summary>
     TaskAlreadyCompleted,
+
+    /// <summary>
+    /// A tool call's arguments could not be parsed as a JSON object at all. The model is not
+    /// bound by a tool's declared schema, so this is reachable in practice, not only in theory.
+    /// </summary>
+    ToolArgumentsMalformed,
+
+    /// <summary>
+    /// A tool call's arguments parsed, but a field the tool requires was absent or blank.
+    /// </summary>
+    ToolArgumentMissing,
+
+    /// <summary>
+    /// A due time's text did not match the exact wall-clock shape the model is asked to supply,
+    /// so no instant could be resolved from it at all.
+    /// </summary>
+    DueTimeUnparseable,
 }

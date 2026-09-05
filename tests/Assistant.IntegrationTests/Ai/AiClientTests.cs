@@ -4,6 +4,7 @@ using Assistant.Impl;
 using Assistant.Impl.Settings;
 using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
+using Assistant.Repository;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Assistant.IntegrationTests.Ai;
@@ -12,8 +13,14 @@ namespace Assistant.IntegrationTests.Ai;
 /// Test class for <see cref="IAiClient"/>.
 /// </summary>
 /// <param name="wireMock">The shared stub API fixture.</param>
+/// <param name="postgres">
+/// The shared database fixture. This suite never reads or writes a row -- it is here because
+/// <c>AiClient</c> resolves every registered <see cref="IAssistantTool"/> to describe it on the
+/// wire, and describing a tool now means constructing one that can also execute. See
+/// <c>CreateTaskTool</c>'s own remarks for why that is one interface rather than two.
+/// </param>
 [Collection(IntegrationCollection.Name)]
-public sealed class AiClientTests(WireMockFixture wireMock) : IAsyncLifetime
+public sealed class AiClientTests(WireMockFixture wireMock, PostgresFixture postgres) : IAsyncLifetime
 {
     private const string Model = "test-model";
     private const int MaxTokens = 100;
@@ -27,6 +34,7 @@ public sealed class AiClientTests(WireMockFixture wireMock) : IAsyncLifetime
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddAssistantRepository(postgres.ConnectionString);
         services.AddAssistantServices();
         services.AddAssistantTime(new TimeSettings { IanaTimeZone = "Asia/Jerusalem" });
         services.AddAssistantAi(new AiSettings

@@ -1,18 +1,25 @@
+using System.Text.Json;
+using Assistant.Contracts;
 using Assistant.Interfaces;
+using Assistant.Models;
 
 namespace Assistant.Impl.Tools;
 
 /// <summary>
-/// Describes the <c>create_task</c> tool offered to the model on every chat request.
+/// Describes and executes the <c>create_task</c> tool offered to the model on every chat request.
 /// </summary>
+/// <param name="taskService">
+/// Persists the task once its arguments are bound and any due time is resolved.
+/// </param>
+/// <param name="clock">Resolves the request's local-time text against the configured zone.</param>
 /// <remarks>
-/// Carries no behaviour: the model can call this tool and <c>AiClient</c> parses the call out of
-/// the answer, but nothing dispatches to an implementation or writes a row until
-/// <see cref="ITaskService"/> grows a create method at F10. <c>due_at_local</c> is the only
-/// optional field the schema advertises today; <c>notes</c> and <c>priority</c> wait for the
-/// features that give <c>ReminderTask</c> somewhere to put them.
+/// The model is not bound by <see cref="ParametersJsonSchema"/>: a required field may be absent,
+/// empty, or of the wrong shape, and the arguments text itself may not parse as JSON at all.
+/// <see cref="ExecuteAsync"/> refuses all three before calling
+/// <see cref="ITaskService.CreateAsync"/>, so nothing is persisted on any of those paths.
 /// </remarks>
-internal sealed class CreateTaskTool : IAssistantTool
+internal sealed class CreateTaskTool(ITaskService taskService, ILocalTimeResolver clock)
+    : IAssistantTool
 {
     /// <inheritdoc/>
     public string Name => "create_task";
@@ -40,4 +47,44 @@ internal sealed class CreateTaskTool : IAssistantTool
           "required": ["title"]
         }
         """;
+
+    /// <inheritdoc/>
+    public async Task<Result<ReminderTask>> ExecuteAsync(string argumentsJson, CancellationToken ct)
+    {
+        CreateTaskRequest? request;
+        try
+        {
+            request = JsonSerializer.Deserialize<CreateTaskRequest>(argumentsJson);
+        }
+        catch (JsonException)
+        {
+            return Result<ReminderTask>.Failure(ErrorCode.ToolArgumentsMalformed);
+        }
+
+        if (request is null)
+        {
+            return Result<ReminderTask>.Failure(ErrorCode.ToolArgumentsMalformed);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            return Result<ReminderTask>.Failure(ErrorCode.ToolArgumentMissing);
+        }
+
+        DateTimeOffset? dueAtUtc = null;
+
+        if (request.DueAtLocal is not null)
+        {
+            var resolved = clock.Resolve(request.DueAtLocal);
+
+            if (!resolved.IsSuccess)
+            {
+                return Result<ReminderTask>.Failure(resolved.Error!.Value);
+            }
+
+            dueAtUtc = resolved.Value;
+        }
+
+        return await taskService.CreateAsync(request, dueAtUtc, ct);
+    }
 }
