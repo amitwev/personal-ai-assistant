@@ -575,8 +575,10 @@ chat request, `tool_calls` parsed out of the response, `CreateTaskRequest` in `C
 - **`CreateTaskRequest.DueAtLocal` stays a string.** Resolving it against the configured zone is
   `ILocalTimeResolver.Resolve`'s job, called from F10's `CreateTaskTool.ExecuteAsync` once that
   exists — not this slice's, and not a job a parsed `DateTime` could do without a zone to resolve
-  against yet. `Notes` and `Priority` are absent from the schema entirely, deferred to F10 and
-  F12, the features that give `ReminderTask` somewhere to put them.
+  against yet. `Notes` and `Priority` are absent from the schema entirely. `Priority` is deferred
+  to F12, the feature that gives `ReminderTask` somewhere to put it. `Notes` was deferred to F10
+  here too, but F10 shipped without it (F10-1 Decision 7) — it remains unscheduled, returning with
+  whichever future feature first writes a test that needs it. Corrected at F10-3.
 - **A model's prose reply is a named failure**, `ErrorCode.ModelReturnedNoToolCall`, appended
   after `ModelReturnedNoAnswer` — distinct from a transport failure or an empty response, both
   already named at F9a. `MessageHandler` gives it its own sentence, telling the owner their
@@ -726,7 +728,7 @@ first needs it, at the cost of one additive migration:
 | `CompletedAt` | F6 |
 | `DeliveryAttempts` | F11 |
 | `Priority` | F12 |
-| `Notes` | F10 |
+| `Notes` | Unscheduled — F10 shipped without it (F10-1 Decision 7); returns with whichever future feature first writes a test that needs it |
 
 ## 5. Not in slice 1
 
