@@ -13,6 +13,16 @@ clears that keyboard explicitly on completion — sending no `reply_markup` inst
 while nothing existed to clear (F6-2's own Decision 3), and that condition ends here. F6 is
 tagged **observable** in the backlog; F6-1 and F6-2 could not meet that bar. This slice closes it.
 
+> **Amendment (made during review):** the plan below prescribes rendering `TaskActions.All`
+> through `.Select(...)`. The implementation instead constructs the single `Done` button
+> directly — `TaskActions.All` has exactly one entry, so a `.Select` over it is machinery for a
+> plurality that does not exist, and the `IEnumerable<InlineKeyboardButton>` constructor overload
+> that a `.Select` would bind to silently commits every action to one row, a layout decision that
+> properly belongs to F11 once it must also decide which actions a given reminder shows. The test
+> that pins this behaviour never asserted "one button per catalogue entry" in the first place. The
+> sections below still describe the original `.Select` form and are left as written, being the
+> plan as reviewed.
+
 **Tech Stack:** .NET 10 (`net10.0`), nullable enabled, warnings are errors — the existing stack.
 This slice adds **no new NuGet package** — `Telegram.Bot` 22.10.2.1
 (`Directory.Packages.props:29`) already exposes `InlineKeyboardMarkup`/`InlineKeyboardButton` in
@@ -1356,8 +1366,9 @@ Claude-Session: https://claude.ai/code/session_01Bimk3DeBJ8apMsGw5ag8qo
 - [ ] `SendTaskAsync`'s only production caller is `DueReminderJob`; `Program.cs:17` and
       `MessageHandler.cs:57` still call `SendAsync`, confirmed by re-reading both files after this
       commit's diff
-- [ ] `SendTaskAsync` builds its keyboard from `TaskActions.All` via `.Select`, not a hand-written
-      single-button construction — the shape that keeps working unchanged once F11 adds entries
+- [ ] `SendTaskAsync` builds its keyboard as the single `Done` button, constructed directly
+      rather than by iterating `TaskActions.All` — reading `Key` and `Label` off the catalogue's
+      `Done` entry so neither is declared twice
 - [ ] Every button's `callback_data` comes from `CallbackCodec.Encode`, the same method
       `CallbackRouter.HandleAsync` decodes with `CallbackCodec.TryDecode` — no separate encoding
       exists anywhere in this slice

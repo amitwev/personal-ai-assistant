@@ -292,8 +292,10 @@ query is always answered.
   `observable` tag, until F6-3 lands — see F6-1's and F6-2's own plans for why the button ships
   last.
 *Settled at F6-3:*
-- **The button exists.** `INotifier.SendTaskAsync` attaches one button per `TaskActions` entry --
-  today, only `Done` -- to the message `DueReminderJob` sends. `MarkCompletedTaskAsync` now sends
+- **The button exists.** `INotifier.SendTaskAsync` attaches the catalogue's `Done` button to
+  the message `DueReminderJob` sends, built directly rather than by iterating `TaskActions.All`
+  — `All` has exactly one entry today, and the `IEnumerable` overload that iterating would
+  need fixes the layout at one row, a call that belongs to F11. `MarkCompletedTaskAsync` now sends
   an explicit empty keyboard on completion, so a struck-through reminder does not keep a dead
   button under it. This is the first inline keyboard anywhere in this repository's history.
 - **F6 is closed.** All three pull requests (F6-1, F6-2, F6-3) have landed, and the `observable`

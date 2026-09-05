@@ -27,12 +27,13 @@ public interface INotifier
     Task SendAsync(string text, CancellationToken ct);
 
     /// <summary>
-    /// Sends a message announcing a task, with every action from the shared catalogue attached
-    /// as a button.
+    /// Sends a message announcing a task, with the actions its channel can offer attached as
+    /// buttons. The caller supplies no action list; which actions appear is the adapter's own
+    /// decision.
     /// </summary>
     /// <param name="taskId">
     /// The task the message announces. The adapter needs this to build a channel-neutral handle
-    /// for every action in the catalogue -- it never sees any other part of a database shape.
+    /// for each action it attaches -- it never sees any other part of a database shape.
     /// </param>
     /// <param name="text">
     /// The message body, as plain text. The adapter escapes whatever its channel requires
@@ -41,9 +42,8 @@ public interface INotifier
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A task that completes once the message has been accepted for delivery.</returns>
     /// <remarks>
-    /// Every action in <c>TaskActions.All</c> is attached; there is no overload that accepts a
-    /// subset, because every caller today wants the same one -- the day a caller needs fewer,
-    /// that caller is the trigger for adding one.
+    /// There is no overload that accepts a subset of actions, because no caller needs one -- the
+    /// first caller that needs a subset is the trigger for adding it.
     /// </remarks>
     Task SendTaskAsync(Guid taskId, string text, CancellationToken ct);
 

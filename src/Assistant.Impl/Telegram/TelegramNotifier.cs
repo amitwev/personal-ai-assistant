@@ -38,10 +38,16 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Builds one button per entry in <c>TaskActions.All</c>, in one row -- there is exactly one
-    /// entry, <c>Done</c>, until F11 adds more. Each button's callback data is
-    /// <c>CallbackCodec.Encode</c> applied to that action's key and <paramref name="taskId"/>,
-    /// the same encoding <c>CallbackRouter</c> decodes on a tap. A button's label is sent as-is:
+    /// Builds a single button, the catalogue's <c>Done</c> entry, directly rather than by
+    /// iterating <c>TaskActions.All</c> -- <c>All</c> has exactly one entry, and a loop is
+    /// machinery for a plurality that does not exist. The
+    /// <see cref="InlineKeyboardMarkup(IEnumerable{InlineKeyboardButton})"/> overload an iteration
+    /// would need binds to the same row-wrapping constructor described in the
+    /// <see cref="NoButtons"/> comment above, so iterating would silently fix the layout at
+    /// "everything in one row" -- a decision that belongs to F11, which must also decide which
+    /// actions a given reminder shows. The button's callback data is
+    /// <c>CallbackCodec.Encode</c> applied to <c>Done.Key</c> and <paramref name="taskId"/>, the
+    /// same encoding <c>CallbackRouter</c> decodes on a tap. Its label is sent as-is:
     /// <c>parse_mode</c> governs the message body, not a button's text, which Telegram carries as
     /// a plain JSON string rather than parsed markup -- so a future label containing "&amp;" or
     /// "&lt;" would still need no escaping here.
