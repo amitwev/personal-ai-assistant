@@ -1,4 +1,5 @@
 using Assistant.Contracts;
+using Assistant.Impl.Mapping;
 using Assistant.Interfaces;
 using Assistant.Models;
 
@@ -68,4 +69,15 @@ internal sealed class TaskService(ITaskRepository repository, TimeProvider timeP
 
         return Result.Success();
     }
+
+    /// <inheritdoc/>
+    public async Task<Result<ReminderTask>> CreateAsync(
+        CreateTaskRequest request, DateTimeOffset? dueAtUtc, CancellationToken ct)
+    {
+        var task = request.ToModel(dueAtUtc, timeProvider.GetUtcNow());
+        await repository.AddAsync(task, ct);
+
+        return Result<ReminderTask>.Success(task);
+    }
 }
+

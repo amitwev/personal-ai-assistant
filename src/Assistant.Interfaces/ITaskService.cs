@@ -52,4 +52,26 @@ public interface ITaskService
     /// carries the instant of the first completion, never a later one.
     /// </remarks>
     Task<Result> CompleteAsync(Guid id, CancellationToken ct);
+
+    /// <summary>
+    /// Creates a new task.
+    /// </summary>
+    /// <param name="request">The captured request, carrying the task's title.</param>
+    /// <param name="dueAtUtc">
+    /// The task's due instant in UTC, already resolved from the request's local-time text against
+    /// the configured zone -- or <see langword="null"/> when the request gave no time. Resolving
+    /// is the caller's job: this service has no zone of its own to resolve against, and the
+    /// resolver's own guard clauses (<see cref="ErrorCode.DueTimeInPast"/>,
+    /// <see cref="ErrorCode.DueTimeTooFarAhead"/>) must already have passed before this method is
+    /// ever called, so nothing is persisted on a time the resolver would have refused.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// The stored task, with a freshly generated identifier and <see cref="ReminderStatus.Pending"/>
+    /// status. This method never fails: there is no precondition on a create the way there is on
+    /// looking an existing task up by identifier.
+    /// </returns>
+    Task<Result<ReminderTask>> CreateAsync(
+        CreateTaskRequest request, DateTimeOffset? dueAtUtc, CancellationToken ct);
 }
+
