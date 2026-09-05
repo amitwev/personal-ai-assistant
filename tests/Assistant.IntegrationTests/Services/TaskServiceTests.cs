@@ -153,4 +153,56 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
         // Assert
         Assert.Equal(ErrorCode.TaskNotFound, result.Error);
     }
+
+    /// <summary>
+    /// When a captured request carries a title and an already-resolved due instant
+    /// And it is created
+    /// Then a pending task is stored with that title and due instant
+    /// And the same task is handed back to the caller.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_TitleAndResolvedDueTime_StoresAPendingTaskAndReturnsIt()
+    {
+        // Arrange
+        var request = new CreateTaskRequest("Call the bank", "2026-08-26T10:00:00");
+        var dueAtUtc = AsOf.AddHours(1);
+
+        // Act
+        var result = await _sut.CreateAsync(request, dueAtUtc, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Call the bank", result.Value!.Title);
+        Assert.Equal(dueAtUtc, result.Value.DueAt);
+        Assert.Equal(ReminderStatus.Pending, result.Value.Status);
+
+        var stored = await _repository.FindAsync(result.Value.Id, CancellationToken.None);
+        Assert.Equal("Call the bank", stored!.Title);
+        Assert.Equal(dueAtUtc, stored.DueAt);
+        Assert.Equal(ReminderStatus.Pending, stored.Status);
+    }
+
+    /// <summary>
+    /// When a captured request carries a title and no due time
+    /// And it is created
+    /// Then a task is stored with no due instant
+    /// And it never appears among tasks that are due.
+    /// </summary>
+    [Fact]
+    public async Task CreateAsync_NoDueTime_StoresATaskThatIsNeverDue()
+    {
+        // Arrange
+        var request = new CreateTaskRequest("Buy milk", null);
+
+        // Act
+        var result = await _sut.CreateAsync(request, dueAtUtc: null, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value!.DueAt);
+
+        var due = await _repository.GetDueRemindersAsync(AsOf.AddYears(10), NoLimit, CancellationToken.None);
+        Assert.DoesNotContain(due, t => t.Id == result.Value.Id);
+    }
 }
+
