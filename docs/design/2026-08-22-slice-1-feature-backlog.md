@@ -596,12 +596,37 @@ chat request, `tool_calls` parsed out of the response, `CreateTaskRequest` in `C
   `WireMockFixture`'s own seeded payloads already use the same `JsonNode` family.
 - **No new NuGet package.** The wire and tool-definition types this slice adds are all `System.Text.Json`.
 
-**F10 · Store the parsed task and reply · observable** — spec §5.1
+**F10 · Store the parsed task and reply · observable** — spec §5.1 · **done**
 `ITaskService.CreateAsync`, the mapping extension methods, and the reply rendered with its
-inline keyboard. `ReminderTask` regains `Notes`, which the capture path is first to write.
+inline keyboard. `ReminderTask` does not regain `Notes` — despite this entry's own original
+claim here and the §4 table's matching row (both corrected at F10-3), no slice of F10 ever wrote
+a test that exercises it.
 *Tests:* "call the bank tomorrow at 10" ends as a row with the right UTC instant and a reply
 carrying the right buttons.
 **Milestone: the full loop.** Talk to it, get reminded, tap Done.
+*Settled at F10-3, applied at F10-4:*
+- **Split across three pull requests**, not one: F10-1 (the writer), F10-2 (the tool executes),
+  F10-3 (the reply closes the loop, commit 724b600). F10 stayed open, unmet by the `observable`
+  tag, until F10-3 landed and the owner verified the full loop on a real phone — the same
+  posture F6 held across its own three slices. Marking this entry done, and writing the two
+  bullets below, was specified in full by F10-3's own plan and deferred to whoever implemented
+  it and obtained that verification (F10-3 Decision 9) — neither happened until F10-4.
+- **F10 is closed.** All three pull requests have landed, and the `observable` tag is met:
+  talking to the bot ends in a stored row and a reply carrying the Done button, verified by the
+  owner on a real phone; see `docs/e2e-local.md`.
+*Settled at F10-4:*
+- **The owner's own message is deleted once a capture succeeds**, so the chat reads as a list of
+  open tasks rather than a transcript of everything the owner typed — the owner's own stated
+  goal, not something spec §5.1 originally asked for (corrected there in the same commit). The
+  delete runs only after the reply has already been sent, and only on a successful capture; any
+  failure reply leaves the owner's message in place, so they can see what they typed and fix it.
+  `MessageHandler` now takes `ITelegramBotClient` directly to do this — the precedent
+  `CallbackRouter` already set for a Telegram update handler holding the bot client — rather
+  than adding a delete method to `INotifier`, since deletion is a Telegram affordance a future
+  channel may not have. The delete is best-effort: a failure is logged at warning, by message id
+  alone, and never surfaced to the owner, since the task is already saved and the reply already
+  sent by the time it runs. Storing the capture message's own id on `reminder_tasks`, so a fired
+  reminder can delete it too, is F10-5's.
 
 ### Completing the product
 

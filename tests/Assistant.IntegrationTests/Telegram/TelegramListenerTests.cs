@@ -261,4 +261,55 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
         Assert.Equal(expectedReply, sent[0].Text);
         Assert.Null(sent[0].ReplyMarkup);
     }
+
+    /// <summary>
+    /// When the owner sends a message
+    /// And the model calls create_task successfully
+    /// Then the owner's own message is deleted.
+    /// </summary>
+    [Fact]
+    public async Task Listener_OwnerSendsAMessageThatCaptures_DeletesTheOwnersMessage()
+    {
+        // Arrange
+        await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "call the bank tomorrow at 10"));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var deleted = await wireMock.WaitForDeletedMessagesAsync(1, ReplyDeadline);
+        var single = Assert.Single(deleted);
+        Assert.Equal(OwnerChatId, single.ChatId);
+        Assert.Equal(10, single.MessageId);
+    }
+
+    /// <summary>
+    /// When the owner sends a message whose capture is refused
+    /// And a second message from the owner is processed after it
+    /// Then neither message is deleted.
+    /// </summary>
+    /// <remarks>
+    /// The second message is a synchronisation device, not a second assertion -- the same
+    /// technique <see cref="Listener_StrangerSendsAMessage_OnlyTheOwnerIsAnswered"/>'s own
+    /// remarks use. Proving that nothing was deleted any other way means waiting on a clock and
+    /// hoping; putting a second message after the first in the same batch means that by the time
+    /// its own reply arrives, the first message's entire handling -- including whatever it would
+    /// have deleted -- has already run to completion.
+    /// </remarks>
+    [Fact]
+    public async Task Listener_ARefusedCaptureIsFollowedByAnotherMessage_NeitherMessageIsDeleted()
+    {
+        // Arrange
+        await wireMock.SeedAiToolCallAsync("create_task", """{"due_at_local":"2026-08-26T10:00:00"}""");
+        await wireMock.SeedUpdatesAsync(
+            new InboundUpdate(10, OwnerChatId, "call the bank"),
+            new InboundUpdate(11, OwnerChatId, "call the bank again"));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+        await wireMock.WaitForSentMessagesAsync(2, ReplyDeadline);
+
+        // Assert
+        Assert.Empty(await wireMock.DeletedMessagesAsync());
+    }
 }

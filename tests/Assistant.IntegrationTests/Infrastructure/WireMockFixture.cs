@@ -256,6 +256,57 @@ public sealed class WireMockFixture : IAsyncLifetime
     }
 
     /// <summary>
+    /// Returns the delete-message requests the stub received, in order.
+    /// </summary>
+    /// <returns>One payload per captured request.</returns>
+    public async Task<IReadOnlyList<DeleteMessagePayload>> DeletedMessagesAsync()
+    {
+        var entries = await _http.GetFromJsonAsync<List<AdminLogEntry>>($"{Url}/__admin/requests")
+                      ?? [];
+
+        return entries
+            .Where(entry => entry.Request.Path.EndsWith("/deleteMessage", StringComparison.Ordinal)
+                            && entry.Request.Method == "POST")
+            .Select(entry => JsonSerializer.Deserialize<DeleteMessagePayload>(entry.Request.Body)!)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Waits until the stub has received at least the given number of delete-message requests.
+    /// </summary>
+    /// <param name="count">How many deletes to wait for.</param>
+    /// <param name="timeout">How long to wait before giving up.</param>
+    /// <returns>Every delete received, which may be more than requested.</returns>
+    /// <exception cref="TimeoutException">Too few deletes arrived in time.</exception>
+    /// <remarks>
+    /// A reply and its own delete are two independently timed HTTP calls, so waiting only for
+    /// <see cref="WaitForSentMessagesAsync"/> proves the reply landed, not that the delete which
+    /// follows it has also reached the stub yet -- this polls the same way, for the call that
+    /// comes second.
+    /// </remarks>
+    public async Task<IReadOnlyList<DeleteMessagePayload>> WaitForDeletedMessagesAsync(
+        int count, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var deleted = await DeletedMessagesAsync();
+
+            if (deleted.Count >= count)
+            {
+                return deleted;
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException(
+            $"Expected at least {count} delete(s) within {timeout.TotalSeconds:0.#}s; "
+            + $"got {(await DeletedMessagesAsync()).Count}.");
+    }
+
+    /// <summary>
     /// Makes the stub serve the given callback-query updates to the next getUpdates poll.
     /// </summary>
     /// <param name="updates">The updates to serve, in the order Telegram would.</param>
@@ -604,6 +655,23 @@ public sealed record EditMessageTextPayload(
     /// Any field on the wire that this record does not name.
     /// </summary>
     /// <value>Null when the request carried exactly the named fields.</value>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Extra { get; init; }
+}
+
+/// <summary>
+/// The body of a Telegram <c>deleteMessage</c> request.
+/// </summary>
+/// <param name="ChatId">The chat the deleted message lived in.</param>
+/// <param name="MessageId">The message that was deleted.</param>
+public sealed record DeleteMessagePayload(
+    [property: JsonPropertyName("chat_id")] long ChatId,
+    [property: JsonPropertyName("message_id")] int MessageId)
+{
+    /// <summary>
+    /// Any field on the wire that this record does not name.
+    /// </summary>
+    /// <value>Null when the request carried exactly the two named fields.</value>
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Extra { get; init; }
 }
