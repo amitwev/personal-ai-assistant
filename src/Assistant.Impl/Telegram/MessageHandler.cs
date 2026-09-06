@@ -4,6 +4,8 @@ using Assistant.Impl.Settings;
 using Assistant.Interfaces;
 using Assistant.Models;
 using Microsoft.Extensions.Logging;
+using Telegram.Bot;
+using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
@@ -11,14 +13,25 @@ namespace Assistant.Impl.Telegram;
 
 /// <summary>
 /// Sends the owner's plain-text message to the chat model, carries out the tool call it names,
-/// and replies with what was actually stored.
+/// replies with what was actually stored, and deletes the owner's own message once that reply
+/// has been sent.
 /// </summary>
 /// <param name="settings">Validated Telegram configuration, which carries the owner's chat.</param>
+/// <param name="bot">
+/// The Telegram client, used only to delete the owner's own message after a successful capture.
+/// Deletion is a Telegram affordance, not a channel-neutral one <see cref="INotifier"/> could
+/// offer every future channel, so this handler reaches the client directly -- the same
+/// precedent <see cref="CallbackRouter"/> already set for a Telegram update handler holding the
+/// bot client.
+/// </param>
 /// <param name="notifier">Where the reply is delivered.</param>
 /// <param name="ai">Reaches the configured chat model for an answer.</param>
 /// <param name="tools">Every registered tool, matched against the model's tool call by name.</param>
 /// <param name="clock">Renders a stored due instant back in the configured local zone.</param>
-/// <param name="logger">Where a tool call naming an unregistered tool is recorded.</param>
+/// <param name="logger">
+/// Where a tool call naming an unregistered tool is recorded, and where a failed best-effort
+/// delete of the owner's own message is recorded.
+/// </param>
 /// <remarks>
 /// The owner check lives inline here, on purpose: the assistant serves exactly one person, so
 /// there is nothing to route between. Any future handler must apply the same check itself --
@@ -33,9 +46,21 @@ namespace Assistant.Impl.Telegram;
 /// <c>IEnumerable&lt;ITaskAction&gt;</c>: an inbound name matched against a registered
 /// collection, extended by adding a class and a registration, never by editing this method.
 /// </para>
+/// <para>
+/// A successful capture also deletes the owner's own message, once the reply carrying it has
+/// been sent -- never before, so a delete failure can never cost the owner the confirmation
+/// that their task was saved. Any failure reply leaves the message in place, so the owner can
+/// see what they typed and fix it rather than being left holding an unreadable failure with no
+/// record of what they sent. The delete itself is best-effort: it can fail (the owner may have
+/// deleted the message themselves in the meantime, or the request may simply fail), and by the
+/// time it runs the task is already saved and the reply already sent, so a message that failed
+/// to vanish is not worth an alarming sentence -- a failure is logged at warning and never
+/// surfaced to the owner.
+/// </para>
 /// </remarks>
 internal sealed class MessageHandler(
     TelegramSettings settings,
+    ITelegramBotClient bot,
     INotifier notifier,
     IAiClient ai,
     IEnumerable<IAssistantTool> tools,
@@ -73,7 +98,7 @@ internal sealed class MessageHandler(
     /// <inheritdoc/>
     public async Task HandleAsync(Update update, CancellationToken ct)
     {
-        if (update.Message is not { Chat.Id: var chatId, Text: { } text } ||
+        if (update.Message is not { Chat.Id: var chatId, Id: var messageId, Text: { } text } ||
             chatId != settings.OwnerChatId)
         {
             return;
@@ -129,5 +154,14 @@ internal sealed class MessageHandler(
             : $"{task.Title} -- saved with no reminder.";
 
         await notifier.SendTaskAsync(task.Id, reply, ct);
+
+        try
+        {
+            await bot.DeleteMessage(chatId, messageId, ct);
+        }
+        catch (RequestException)
+        {
+            logger.LogWarning("Could not delete the owner's message {MessageId}.", messageId);
+        }
     }
 }

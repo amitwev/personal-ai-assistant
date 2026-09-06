@@ -318,6 +318,7 @@ Telegram update arrives (long poll)
   → IAiClient → tool call
   → IAssistantTool → ITaskService → repository → Postgres
   → reply rendered with inline keyboard
+  → on a successful capture, delete the owner's own message
 ```
 
 The whitelist check happens before any LLM call, so an unknown sender costs nothing.
@@ -329,6 +330,17 @@ above is built from the update Telegram just delivered, not from anything read b
 **Deferred:** F7 shipped without the `start "typing…" indicator` step. There is nothing to
 compose until F9 makes a model call — F7's reply is the user's own text echoed back, which is
 instant, so there is no wait for an indicator to cover.
+
+**Added at F10-4:** the final step was never part of this flow as originally designed. Once the
+capture path actually worked end to end, the owner asked for the chat to stop reading as a
+transcript of everything they typed and become a list of open tasks instead: after a successful
+capture, the bot deletes the owner's own message, leaving only its own reply. The delete runs
+only after the reply has been sent, and only on success — any failure reply (§5.4's guard
+clauses, a malformed tool call, an unrecognised tool name) leaves the owner's message in place,
+so they can see what they typed and fix it. The delete itself is best-effort and never surfaced
+to the owner on failure, since by the time it runs the task is already saved and the reply
+already sent. Storing the capture message's own id on `reminder_tasks`, so the reminder that
+later fires can delete it too, is F10-5's.
 
 ### 5.2 System prompt
 

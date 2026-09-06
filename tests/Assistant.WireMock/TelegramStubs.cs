@@ -23,6 +23,8 @@ internal static class TelegramStubs
          "chat":{"id":1,"type":"private"},"text":"stubbed"}}
         """;
 
+    private const string DeleteMessageResponse = """{"ok":true,"result":true}""";
+
     /// <summary>
     /// Installs the Telegram mappings on the given server.
     /// </summary>
@@ -61,6 +63,13 @@ internal static class TelegramStubs
                 .WithStatusCode(200)
                 .WithHeader("Content-Type", "application/json")
                 .WithBody(EditMessageTextResponse));
+
+        server
+            .Given(Request.Create().WithPath("/bot*/deleteMessage").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(DeleteMessageResponse));
 
         server
             .Given(Request.Create().WithPath("/bot*/getUpdates").UsingPost())
