@@ -53,4 +53,17 @@ public interface ILocalTimeResolver
     /// fall-back hour resolves to the first of its two occurrences.
     /// </returns>
     Result<DateTimeOffset> Resolve(string local);
+
+    /// <summary>
+    /// Converts a UTC instant back to the wall-clock reading it names in the configured zone.
+    /// </summary>
+    /// <param name="utc">The instant to convert.</param>
+    /// <returns>The same instant, expressed as a reading in the configured zone.</returns>
+    /// <remarks>
+    /// The reverse of <see cref="Resolve"/>. There is no guard clause and no failure case: the
+    /// past and future checks on <see cref="Resolve"/> exist to catch a misreading of what the
+    /// user meant when typing a time, not to validate an instant that has already been resolved
+    /// and persisted, so converting it back can never be refused.
+    /// </remarks>
+    DateTimeOffset ToLocal(DateTimeOffset utc);
 }

@@ -72,9 +72,13 @@ public static class ImplServiceCollectionExtensions
     /// <param name="services">The container to add registrations to.</param>
     /// <returns>The same <paramref name="services"/>, for chaining.</returns>
     /// <remarks>
-    /// Requires <c>AddAssistantTelegram</c> for the client and the owner's chat id, and
+    /// Requires <c>AddAssistantTelegram</c> for the client and the owner's chat id,
     /// <c>AddAssistantServices</c> for the <see cref="TimeProvider"/> the failure backoff uses and
-    /// the <see cref="ITaskService"/> <see cref="Telegram.CallbackRouter"/>'s actions reach.
+    /// the <see cref="ITaskService"/> <see cref="Telegram.CallbackRouter"/>'s actions reach,
+    /// <c>AddAssistantTime</c> for the <see cref="ILocalTimeResolver"/>
+    /// <see cref="Telegram.MessageHandler"/> renders a stored due time back through, and
+    /// <c>AddAssistantAi</c> for the <see cref="IEnumerable{IAssistantTool}"/>
+    /// <see cref="Telegram.MessageHandler"/> dispatches a tool call against.
     /// Handlers and task actions are registered scoped, not singleton, so
     /// <see cref="Telegram.TelegramListener"/> can resolve them from a scope it opens per update;
     /// see docs/tech-debt.md.

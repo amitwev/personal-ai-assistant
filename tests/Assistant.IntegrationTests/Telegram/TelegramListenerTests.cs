@@ -1,9 +1,13 @@
+using Assistant.Contracts;
 using Assistant.Impl;
 using Assistant.Impl.Settings;
+using Assistant.Impl.Telegram;
 using Assistant.IntegrationTests.Infrastructure;
+using Assistant.Interfaces;
 using Assistant.Repository;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Assistant.IntegrationTests.Telegram;
 
@@ -18,18 +22,36 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
     private const string BotToken = "123456:TESTTOKEN";
     private const long OwnerChatId = 100200300L;
     private const long StrangerChatId = 999888777L;
-
-    private const string AcknowledgedButNotSavedYet =
-        "Got it -- I understood that as a task, but I cannot save it yet.";
+    private const int NoLimit = 100;
 
     private const string NotUnderstoodAsATask =
         "I did not read that as a task. Try rephrasing it.";
 
+    private const string DueTimeInPastReply =
+        "That time has already passed. What time did you mean?";
+
+    private const string DueTimeTooFarAheadReply =
+        "That is more than two years away, which is probably not what you meant. "
+        + "What time did you mean?";
+
+    private const string DueTimeUnparseableReply =
+        "I could not make sense of that time. What time did you mean?";
+
+    private const string TitleMissingReply =
+        "I did not catch what to call that. What should I call it?";
+
+    private const string SomethingWentWrongReply =
+        "Something went wrong on my end. Send that again in a moment.";
+
     private static readonly TimeSpan ReplyDeadline = TimeSpan.FromSeconds(10);
+
+    private static readonly DateTimeOffset AsOf = new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
 
     private ServiceProvider _provider = null!;
 
     private IHostedService _sut = null!;
+
+    private ITaskRepository _repository = null!;
 
     /// <inheritdoc/>
     public async Task InitializeAsync()
@@ -38,6 +60,7 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
         services.AddLogging();
         services.AddAssistantRepository(postgres.ConnectionString);
         services.AddAssistantServices();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider(AsOf));
         services.AddAssistantTelegram(new TelegramSettings
         {
             BotToken = BotToken, OwnerChatId = OwnerChatId, BaseUrl = wireMock.Url,
@@ -50,9 +73,12 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
         services.AddAssistantListener();
         _provider = services.BuildServiceProvider();
         _sut = _provider.GetServices<IHostedService>().Single();
+        _repository = _provider.GetRequiredService<ITaskRepository>();
 
+        await postgres.ResetAsync();
         await wireMock.ResetAsync();
-        await wireMock.SeedAiToolCallAsync("create_task", """{"title":"call the bank"}""");
+        await wireMock.SeedAiToolCallAsync(
+            "create_task", """{"title":"call the bank","due_at_local":"2026-08-26T10:00:00"}""");
     }
 
     /// <inheritdoc/>
@@ -64,21 +90,57 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
 
     /// <summary>
     /// When the owner sends a message
-    /// And the model calls create_task
-    /// Then the owner is told the task was understood but cannot be saved yet.
+    /// And the model calls create_task with a due time that resolves
+    /// Then the task is stored with that due instant
+    /// And the owner is told the title and the due time, rendered in the configured zone
+    /// And the reply carries a Done button for that exact task.
     /// </summary>
     [Fact]
-    public async Task Listener_OwnerSendsAMessage_RepliesThatItUnderstoodTheTask()
+    public async Task Listener_OwnerSendsAMessageWithADueTime_StoresItAndRepliesWithTheDueTimeAndADoneButton()
     {
         // Arrange
-        await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "call the bank"));
+        await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "call the bank tomorrow at 10"));
 
         // Act
         await _sut.StartAsync(CancellationToken.None);
 
         // Assert
         var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
-        Assert.Equal(AcknowledgedButNotSavedYet, sent[0].Text);
+        Assert.Equal("call the bank -- due Wednesday 26 August 2026, 10:00.", sent[0].Text);
+
+        var stored = Assert.Single(
+            await _repository.GetDueRemindersAsync(AsOf.AddYears(10), NoLimit, CancellationToken.None));
+        Assert.Equal(new DateTimeOffset(2026, 8, 26, 7, 0, 0, TimeSpan.Zero), stored.DueAt);
+
+        var row = Assert.Single(sent[0].ReplyMarkup!.InlineKeyboard);
+        var button = Assert.Single(row);
+        Assert.Equal(TaskActions.Done.Label, button.Text);
+        Assert.Equal(CallbackCodec.Encode(TaskActions.Done.Key, stored.Id), button.CallbackData);
+    }
+
+    /// <summary>
+    /// When the owner sends a message
+    /// And the model calls create_task with no due time
+    /// Then the owner is told plainly that no reminder will fire
+    /// And the reply still carries a Done button.
+    /// </summary>
+    [Fact]
+    public async Task Listener_OwnerSendsAMessageWithNoDueTime_RepliesThatNoReminderWillFire()
+    {
+        // Arrange
+        await wireMock.SeedAiToolCallAsync("create_task", """{"title":"Buy milk"}""");
+        await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "buy milk"));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
+        Assert.Equal("Buy milk -- saved with no reminder.", sent[0].Text);
+
+        var row = Assert.Single(sent[0].ReplyMarkup!.InlineKeyboard);
+        var button = Assert.Single(row);
+        Assert.Equal(TaskActions.Done.Label, button.Text);
     }
 
     /// <summary>
@@ -93,9 +155,9 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
     /// reply arrives, the stranger's message has already been processed and skipped.
     /// <para>
     /// This test does not check the reply's exact text: that check duplicated
-    /// <see cref="Listener_OwnerSendsAMessage_RepliesThatItUnderstoodTheTask"/>, which spec
-    /// §7.2 forbids. What this test alone proves is that the stranger's message produced no
-    /// second reply.
+    /// <see cref="Listener_OwnerSendsAMessageWithADueTime_StoresItAndRepliesWithTheDueTimeAndADoneButton"/>,
+    /// which spec §7.2 forbids. What this test alone proves is that the stranger's message
+    /// produced no second reply.
     /// </para>
     /// </remarks>
     [Fact]
@@ -158,5 +220,45 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
         // Assert
         var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
         Assert.Equal(NotUnderstoodAsATask, sent[0].Text);
+    }
+
+    /// <summary>
+    /// When the owner sends a message
+    /// And the model's tool call cannot be carried out
+    /// Then the owner is told a plain sentence with no button
+    /// And nothing else is sent.
+    /// </summary>
+    /// <param name="toolName">The tool name the stubbed tool call carries.</param>
+    /// <param name="argumentsJson">The arguments JSON the stubbed tool call carries.</param>
+    /// <param name="expectedReply">The sentence the owner should see.</param>
+    /// <remarks>
+    /// Whether a row was written for each of these is proven once, at the tool level, by
+    /// <c>CreateTaskToolTests</c> -- repeating that proof here through a real Telegram round
+    /// trip would duplicate coverage spec §7.2 forbids. The unregistered-tool-name row has no
+    /// such proof anywhere else, and needs none: <c>MessageHandler</c> only calls an
+    /// <see cref="IAssistantTool"/> once one has actually been found, so there is no code path
+    /// from an unmatched name to a persisted row to test in the first place.
+    /// </remarks>
+    [Theory]
+    [InlineData("create_task", """{"title":"Call the bank","due_at_local":"2026-08-25T10:00:00"}""", DueTimeInPastReply)]
+    [InlineData("create_task", """{"title":"Call the bank","due_at_local":"2029-06-01T00:00:00"}""", DueTimeTooFarAheadReply)]
+    [InlineData("create_task", """{"title":"Call the bank","due_at_local":"not a date"}""", DueTimeUnparseableReply)]
+    [InlineData("create_task", """{"due_at_local":"2026-08-26T10:00:00"}""", TitleMissingReply)]
+    [InlineData("create_task", "not json at all", SomethingWentWrongReply)]
+    [InlineData("update_task", """{"anything":"here"}""", SomethingWentWrongReply)]
+    public async Task Listener_ModelsToolCallCannotBeCarriedOut_RepliesWithNoButton(
+        string toolName, string argumentsJson, string expectedReply)
+    {
+        // Arrange
+        await wireMock.SeedAiToolCallAsync(toolName, argumentsJson);
+        await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "call the bank"));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var sent = await wireMock.WaitForSentMessagesAsync(1, ReplyDeadline);
+        Assert.Equal(expectedReply, sent[0].Text);
+        Assert.Null(sent[0].ReplyMarkup);
     }
 }

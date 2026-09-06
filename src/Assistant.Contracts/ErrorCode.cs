@@ -67,4 +67,9 @@ public enum ErrorCode
     /// so no instant could be resolved from it at all.
     /// </summary>
     DueTimeUnparseable,
+
+    /// <summary>
+    /// The chat model called a tool that is not among those registered.
+    /// </summary>
+    ModelNamedUnknownTool,
 }
