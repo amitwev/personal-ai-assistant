@@ -93,10 +93,10 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
     /// And the model calls create_task with a due time that resolves
     /// Then the task is stored with that due instant
     /// And the owner is told the title and the due time, rendered in the configured zone
-    /// And the reply carries a Done button for that exact task.
+    /// And the reply carries Done and Schedule buttons for that exact task.
     /// </summary>
     [Fact]
-    public async Task Listener_OwnerSendsAMessageWithADueTime_StoresItAndRepliesWithTheDueTimeAndADoneButton()
+    public async Task Listener_OwnerSendsAMessageWithADueTime_StoresItAndRepliesWithTheDueTimeAndTheDoneAndScheduleButtons()
     {
         // Arrange
         await wireMock.SeedUpdatesAsync(new InboundUpdate(10, OwnerChatId, "call the bank tomorrow at 10"));
@@ -112,17 +112,20 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
             await _repository.GetDueRemindersAsync(AsOf.AddYears(10), NoLimit, CancellationToken.None));
         Assert.Equal(new DateTimeOffset(2026, 8, 26, 7, 0, 0, TimeSpan.Zero), stored.DueAt);
 
-        var row = Assert.Single(sent[0].ReplyMarkup!.InlineKeyboard);
-        var button = Assert.Single(row);
-        Assert.Equal(TaskActions.Done.Label, button.Text);
-        Assert.Equal(CallbackCodec.Encode(TaskActions.Done.Key, stored.Id), button.CallbackData);
+        var expectedRow = new[]
+        {
+            new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, stored.Id)),
+            new InlineButtonPayload(
+                TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, stored.Id, "+1h")),
+        };
+        Assert.Equivalent(expectedRow, Assert.Single(sent[0].ReplyMarkup!.InlineKeyboard), strict: true);
     }
 
     /// <summary>
     /// When the owner sends a message
     /// And the model calls create_task with no due time
     /// Then the owner is told plainly that no reminder will fire
-    /// And the reply still carries a Done button.
+    /// And the reply still carries the Done and Schedule buttons.
     /// </summary>
     [Fact]
     public async Task Listener_OwnerSendsAMessageWithNoDueTime_RepliesThatNoReminderWillFire()
@@ -139,8 +142,9 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
         Assert.Equal("Buy milk -- saved with no reminder.", sent[0].Text);
 
         var row = Assert.Single(sent[0].ReplyMarkup!.InlineKeyboard);
-        var button = Assert.Single(row);
-        Assert.Equal(TaskActions.Done.Label, button.Text);
+        Assert.Equal(2, row.Count);
+        Assert.Equal(TaskActions.Done.Label, row[0].Text);
+        Assert.Equal(TaskActions.Schedule.Label, row[1].Text);
     }
 
     /// <summary>
@@ -155,7 +159,7 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
     /// reply arrives, the stranger's message has already been processed and skipped.
     /// <para>
     /// This test does not check the reply's exact text: that check duplicated
-    /// <see cref="Listener_OwnerSendsAMessageWithADueTime_StoresItAndRepliesWithTheDueTimeAndADoneButton"/>,
+    /// <see cref="Listener_OwnerSendsAMessageWithADueTime_StoresItAndRepliesWithTheDueTimeAndTheDoneAndScheduleButtons"/>,
     /// which spec §7.2 forbids. What this test alone proves is that the stranger's message
     /// produced no second reply.
     /// </para>

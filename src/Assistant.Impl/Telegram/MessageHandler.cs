@@ -1,5 +1,5 @@
-using System.Globalization;
 using Assistant.Contracts;
+using Assistant.Impl.Mapping;
 using Assistant.Impl.Settings;
 using Assistant.Interfaces;
 using Assistant.Models;
@@ -68,8 +68,6 @@ internal sealed class MessageHandler(
     ILogger<MessageHandler> logger)
     : ITelegramUpdateHandler
 {
-    private const string DueTimeFormat = "dddd d MMMM yyyy, HH:mm";
-
     private const string Unreachable =
         "I could not reach the model just now. Send that again in a moment.";
 
@@ -149,11 +147,7 @@ internal sealed class MessageHandler(
         }
 
         var task = outcome.Value!;
-        var reply = task.DueAt is { } dueAt
-            ? $"{task.Title} -- due {clock.ToLocal(dueAt).ToString(DueTimeFormat, CultureInfo.InvariantCulture)}."
-            : $"{task.Title} -- saved with no reminder.";
-
-        await notifier.SendTaskAsync(task.Id, reply, ct);
+        await notifier.SendTaskAsync(task.Id, task.ToMessageText(clock), ct);
 
         try
         {

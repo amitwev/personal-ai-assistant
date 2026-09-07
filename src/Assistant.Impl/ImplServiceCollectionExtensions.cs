@@ -73,10 +73,12 @@ public static class ImplServiceCollectionExtensions
     /// <returns>The same <paramref name="services"/>, for chaining.</returns>
     /// <remarks>
     /// Requires <c>AddAssistantTelegram</c> for the client and the owner's chat id,
-    /// <c>AddAssistantServices</c> for the <see cref="TimeProvider"/> the failure backoff uses and
-    /// the <see cref="ITaskService"/> <see cref="Telegram.CallbackRouter"/>'s actions reach,
+    /// <c>AddAssistantServices</c> for the <see cref="TimeProvider"/> the failure backoff and
+    /// <see cref="ScheduleAction"/> use and the <see cref="ITaskService"/>
+    /// <see cref="Telegram.CallbackRouter"/>'s actions reach,
     /// <c>AddAssistantTime</c> for the <see cref="ILocalTimeResolver"/>
-    /// <see cref="Telegram.MessageHandler"/> renders a stored due time back through, and
+    /// <see cref="Telegram.MessageHandler"/> and <see cref="Telegram.CallbackRouter"/> render a
+    /// stored due time back through, and
     /// <c>AddAssistantAi</c> for the <see cref="IEnumerable{IAssistantTool}"/>
     /// <see cref="Telegram.MessageHandler"/> dispatches a tool call against.
     /// Handlers and task actions are registered scoped, not singleton, so
@@ -88,6 +90,7 @@ public static class ImplServiceCollectionExtensions
         services.AddScoped<ITelegramUpdateHandler, MessageHandler>();
         services.AddScoped<ITelegramUpdateHandler, CallbackRouter>();
         services.AddScoped<ITaskAction, DoneAction>();
+        services.AddScoped<ITaskAction, ScheduleAction>();
         services.AddHostedService<TelegramListener>();
         return services;
     }

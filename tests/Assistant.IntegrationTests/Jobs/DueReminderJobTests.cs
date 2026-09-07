@@ -68,14 +68,12 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
     }
 
     /// <summary>
-    /// When a task is due
+    /// When a pending task's due time has arrived
     /// And the job runs
-    /// Then the reminder carries exactly one button
-    /// And that button's callback data decodes to the same task
-    /// And its label is the catalogue's Done label.
+    /// Then the message carries an inline keyboard with the Done and Schedule buttons for that task.
     /// </summary>
     [Fact]
-    public async Task RunAsync_TaskIsDue_AttachesTheDoneButtonForThatTask()
+    public async Task RunAsync_TaskIsDue_AttachesTheDoneAndScheduleButtonsForThatTask()
     {
         // Arrange
         var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
@@ -86,10 +84,13 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
 
         // Assert
         var sent = Assert.Single(await wireMock.SentMessagesAsync());
-        var row = Assert.Single(sent.ReplyMarkup!.InlineKeyboard);
-        var button = Assert.Single(row);
-        Assert.Equal(TaskActions.Done.Label, button.Text);
-        Assert.Equal(CallbackCodec.Encode(TaskActions.Done.Key, task.Id), button.CallbackData);
+        var expectedRow = new[]
+        {
+            new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, task.Id)),
+            new InlineButtonPayload(
+                TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h")),
+        };
+        Assert.Equivalent(expectedRow, Assert.Single(sent.ReplyMarkup!.InlineKeyboard), strict: true);
     }
 
     /// <summary>

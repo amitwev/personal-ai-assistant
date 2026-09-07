@@ -631,10 +631,20 @@ carrying the right buttons.
 ### Completing the product
 
 **F11 · Snooze and reschedule** — spec §6.4, §4.2
-`SnoozeAction`, `RescheduleAction`, `EditAction`. Both clear `ReminderSentAt` and reset
-`DeliveryAttempts` so the task fires again — the pairing that makes `TaskService` the mandatory
-single writer. `ReminderTask` regains `DeliveryAttempts`; the retry cap enters the due query here.
-*Tests:* snooze 1h fires at exactly +1h, not immediately; the sent marker is cleared.
+`ScheduleAction` (`+1h`, joined at F11-4 by `+3h`, `Tonight 20:00`, `Tomorrow 09:00`, and `Back`).
+Clears `ReminderSentAt` so the task fires again, including a task that had no `DueAt` at all --
+the pairing that makes `TaskService` the mandatory single writer. Does not reset `DeliveryAttempts`:
+that column returns at F13, not here.
+*Tests:* +1h fires at exactly one hour from now, not one hour from its old due time; the sent
+marker is cleared; buttons remain attached.
+*Settled at F11-3:*
+- **Split across four pull requests**: F11-1 (the writer moves the clock), F11-2 (the action
+  carries an argument), F11-3 (the button appears), F11-4 (the menu). F11 stays open until
+  F11-4 lands.
+- **`+1h` stands alone as the first action beyond Done.** It adds one hour to the current UTC
+  instant, not to the task's old due time and not via a local wall-clock reading.
+- **`DeliveryAttempts` deferred to F13.** Resetting delivery attempts on reschedule is a no-op
+  until retry tracking exists.
 
 **F12 · Daily brief · observable** — spec §6.3
 `DailyBriefLog` + `daily_brief_log` (its primary key is the once-per-day check),
@@ -645,7 +655,8 @@ single writer. `ReminderTask` regains `DeliveryAttempts`; the retry cap enters t
 **F13 · Never lose a capture** — spec §5.5, §5.6
 `IOpenRouterApi`, `FallbackChatClient` with Polly, the per-minute call cap, and the raw-capture
 safety net: if every provider fails the text is still saved as an undated task and the user is
-told. `ChatMessage` + `chat_messages` arrive here for the conversation window.
+told. `ChatMessage` + `chat_messages` arrive here for the conversation window. `ReminderTask`
+regains `DeliveryAttempts`; the retry cap enters the due query here.
 *Tests:* both providers failing still produces a task and a reply.
 
 **F14 · Operations** — spec §6.5, §8, §11.3
@@ -751,7 +762,7 @@ first needs it, at the cost of one additive migration:
 | Property | Returns at |
 | :--- | :--- |
 | `CompletedAt` | F6 |
-| `DeliveryAttempts` | F11 |
+| `DeliveryAttempts` | F13 |
 | `Priority` | F12 |
 | `Notes` | Unscheduled — F10 shipped without it (F10-1 Decision 7); returns with whichever future feature first writes a test that needs it |
 

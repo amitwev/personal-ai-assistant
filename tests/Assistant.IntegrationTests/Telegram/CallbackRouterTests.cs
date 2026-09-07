@@ -8,6 +8,7 @@ using Assistant.Models;
 using Assistant.Repository;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Time.Testing;
 using static Assistant.IntegrationTests.Infrastructure.ReminderTaskBuilder;
 
 namespace Assistant.IntegrationTests.Telegram;
@@ -49,6 +50,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         services.AddLogging();
         services.AddAssistantRepository(postgres.ConnectionString);
         services.AddAssistantServices();
+        services.AddSingleton<TimeProvider>(new FakeTimeProvider(AsOf));
         services.AddAssistantTelegram(new TelegramSettings
         {
             BotToken = BotToken, OwnerChatId = OwnerChatId, BaseUrl = wireMock.Url,
@@ -238,6 +240,105 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
         Assert.Equal(CallbackQueryId, Assert.Single(answered).CallbackQueryId);
         Assert.Empty(await wireMock.EditedMessagesAsync());
+    }
+
+    /// <summary>
+    /// When the owner taps Schedule on a task
+    /// Then its due time becomes exactly one hour from now, not one hour from its old due time
+    /// And its reminder-sent marker is cleared
+    /// And the message is edited in place with the new due time and both buttons still attached
+    /// And the callback query is answered with no toast.
+    /// </summary>
+    [Fact]
+    public async Task Listener_OwnerTapsSchedule_MovesTheDueTimeOneHourFromNowAndUpdatesTheMessage()
+    {
+        // Arrange
+        var task = BuildReminderTask(dueAt: AsOf.AddDays(-1), reminderSentAt: AsOf.AddDays(-1));
+        await postgres.SaveAsync(task);
+        var data = CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h");
+        await wireMock.SeedCallbackQueryUpdatesAsync(
+            new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, task.Title, data));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
+        Assert.Equivalent(new AnswerCallbackQueryPayload(CallbackQueryId, null), Assert.Single(answered), strict: true);
+
+        var expectedEdit = new EditMessageTextPayload(
+            OwnerChatId, MessageId, "call the bank -- due Tuesday 25 August 2026, 16:00.", "Html",
+            new ReplyMarkupPayload(
+            [
+                [
+                    new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, task.Id)),
+                    new InlineButtonPayload(
+                        TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h")),
+                ],
+            ]));
+        Assert.Equivalent(expectedEdit, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);
+
+        var stored = await _repository.FindAsync(task.Id, CancellationToken.None);
+        Assert.Equal(AsOf.AddHours(1), stored!.DueAt);
+        Assert.Null(stored.ReminderSentAt);
+    }
+
+    /// <summary>
+    /// When Schedule is tapped with an argument this action does not recognise
+    /// Then the callback query is answered that the button is no longer valid
+    /// And nothing is edited
+    /// And the task's due time is unchanged.
+    /// </summary>
+    [Fact]
+    public async Task Listener_ScheduleTappedWithAnUnrecognisedArgument_AnswersButLeavesTheDueTimeUnchanged()
+    {
+        // Arrange
+        var originalDueAt = AsOf.AddHours(-2);
+        var task = BuildReminderTask(dueAt: originalDueAt);
+        await postgres.SaveAsync(task);
+        var data = CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "tomorrow");
+        await wireMock.SeedCallbackQueryUpdatesAsync(
+            new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, task.Title, data));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
+        var expectedAnswer = new AnswerCallbackQueryPayload(CallbackQueryId, "That button is no longer valid.");
+        Assert.Equivalent(expectedAnswer, Assert.Single(answered), strict: true);
+        Assert.Empty(await wireMock.EditedMessagesAsync());
+
+        var stored = await _repository.FindAsync(task.Id, CancellationToken.None);
+        Assert.Equal(originalDueAt, stored!.DueAt);
+    }
+
+    /// <summary>
+    /// When the owner taps Schedule on a reminder whose message is too old for Telegram to carry its text
+    /// Then the task's due time still moves, even from having none at all
+    /// And the message is still edited, since rebuilding it fresh needs no previous text
+    /// And the callback query is answered.
+    /// </summary>
+    [Fact]
+    public async Task Listener_ScheduleTappedOnATooOldMessage_StillUpdatesTheMessage()
+    {
+        // Arrange
+        var task = BuildReminderTask();
+        await postgres.SaveAsync(task);
+        var data = CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h");
+        await wireMock.SeedCallbackQueryUpdatesAsync(
+            new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, null, data));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
+        Assert.Equal(CallbackQueryId, Assert.Single(answered).CallbackQueryId);
+        Assert.Single(await wireMock.EditedMessagesAsync());
+
+        var stored = await _repository.FindAsync(task.Id, CancellationToken.None);
+        Assert.Equal(AsOf.AddHours(1), stored!.DueAt);
     }
 
     /// <summary>

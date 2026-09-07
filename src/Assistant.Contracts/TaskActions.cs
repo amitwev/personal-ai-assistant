@@ -21,7 +21,21 @@ public static class TaskActions
         Description: "Marks the task complete. Refused when the task is already complete.");
 
     /// <summary>
+    /// The Schedule button's definition.
+    /// </summary>
+    /// <remarks>
+    /// The label is "+1h", not "Schedule": there is no menu yet for a "Schedule" label to name.
+    /// F11-4 renames it once tapping the button opens a menu instead of applying one preset.
+    /// </remarks>
+    public static TaskActionDefinition Schedule { get; } = new(
+        Key: "schedule",
+        Label: "+1h",
+        Description: "Moves the task's due time to one hour from now, arming a reminder for the "
+            + "first time on a task that had none. Refused when the task is already complete, or "
+            + "when the callback carries an argument other than \"+1h\".");
+
+    /// <summary>
     /// Every declared action, in declaration order.
     /// </summary>
-    public static IReadOnlyList<TaskActionDefinition> All { get; } = [Done];
+    public static IReadOnlyList<TaskActionDefinition> All { get; } = [Done, Schedule];
 }

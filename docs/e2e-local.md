@@ -266,6 +266,12 @@ button on a real phone proves Telegram itself renders one. This step is the owne
 no agent may run the worker against real Telegram (it needs a real bot token and sends a real
 message) -- and it is F6's own `observable` requirement (backlog §1).
 
+The reminder also carries a `+1h` button next to Done. Tap it: the message updates in place with a
+new due time roughly an hour ahead, and both buttons remain attached -- proof that
+`UpdateTaskAsync`'s re-attached keyboard reached the app, not just the stub's request log. As
+above, this step is the owner's own to run -- no agent may run the worker against real Telegram --
+and it is F11-3's own observable milestone.
+
 ## Troubleshooting
 
 **`System.ArgumentException: Bot token invalid` at startup.** The token is not shaped like
