@@ -52,7 +52,10 @@ internal sealed class AiClient(
 
         if (call is null)
         {
-            logger.LogError("The chat model replied without calling a tool.");
+            logger.LogError(
+                "The chat model replied without calling a tool. Finish reason {FinishReason}, content {Content}.",
+                choice.FinishReason,
+                choice.Message.Content);
             return Result<ToolCall>.Failure(ErrorCode.ModelReturnedNoToolCall);
         }
 
