@@ -73,5 +73,29 @@ public interface ITaskService
     /// </returns>
     Task<Result<ReminderTask>> CreateAsync(
         CreateTaskRequest request, DateTimeOffset? dueAtUtc, CancellationToken ct);
+
+    /// <summary>
+    /// Moves a task's due time to <paramref name="dueAtUtc"/> and re-arms its reminder.
+    /// </summary>
+    /// <param name="id">The task to reschedule.</param>
+    /// <param name="dueAtUtc">
+    /// The new due instant, in UTC. Resolving a relative preset (such as "one hour from now") or
+    /// an absolute local time to this instant is the caller's job -- this method only ever stores
+    /// the instant it is given.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// The rescheduled task, or the reason it was refused: no task carries the identifier, or the
+    /// task has already been completed. Returning the task, not a bare success, lets a caller act
+    /// on the new due time without a second read -- <see cref="CreateAsync"/> does the same.
+    /// </returns>
+    /// <remarks>
+    /// Snooze and reschedule are the same operation: both set <see cref="ReminderTask.DueAt"/> and
+    /// clear <see cref="ReminderTask.ReminderSentAt"/> to <see langword="null"/>. A task with no
+    /// due time at all may also be rescheduled -- this gives it one for the first time. A
+    /// completed task is refused with <see cref="ErrorCode.TaskAlreadyCompleted"/>, the same rule
+    /// <see cref="CompleteAsync"/> uses for a second completion.
+    /// </remarks>
+    Task<Result<ReminderTask>> RescheduleAsync(Guid id, DateTimeOffset dueAtUtc, CancellationToken ct);
 }
 

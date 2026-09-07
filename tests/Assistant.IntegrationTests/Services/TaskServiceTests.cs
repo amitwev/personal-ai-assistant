@@ -155,6 +155,91 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
     }
 
     /// <summary>
+    /// When a task whose reminder already fired is rescheduled
+    /// Then its due time becomes the given instant
+    /// And its reminder-sent marker is cleared so it fires again
+    /// And the rescheduled task is handed back to the caller.
+    /// </summary>
+    [Fact]
+    public async Task RescheduleAsync_ReminderAlreadySent_SetsTheNewDueTimeAndClearsReminderSentAt()
+    {
+        // Arrange
+        var reminderTask = BuildReminderTask(dueAt: AsOf.AddHours(-1), reminderSentAt: AsOf.AddHours(-1));
+        await postgres.SaveAsync(reminderTask);
+        var newDueAt = AsOf.AddHours(1);
+
+        // Act
+        var result = await _sut.RescheduleAsync(reminderTask.Id, newDueAt, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(newDueAt, result.Value!.DueAt);
+        Assert.Null(result.Value.ReminderSentAt);
+        var stored = await _repository.FindAsync(reminderTask.Id, CancellationToken.None);
+        Assert.Equal(newDueAt, stored!.DueAt);
+        Assert.Null(stored.ReminderSentAt);
+    }
+
+    /// <summary>
+    /// When a task with no due time is rescheduled
+    /// Then it gains the given due time, for the first time.
+    /// </summary>
+    [Fact]
+    public async Task RescheduleAsync_TaskHadNoDueTime_GivesItADueTimeForTheFirstTime()
+    {
+        // Arrange
+        var reminderTask = BuildReminderTask(dueAt: null);
+        await postgres.SaveAsync(reminderTask);
+        var newDueAt = AsOf.AddHours(1);
+
+        // Act
+        var result = await _sut.RescheduleAsync(reminderTask.Id, newDueAt, CancellationToken.None);
+
+        // Assert
+        Assert.True(result.IsSuccess);
+        Assert.Equal(newDueAt, result.Value!.DueAt);
+    }
+
+    /// <summary>
+    /// When a task is already completed
+    /// And it is rescheduled
+    /// Then it is refused as already completed
+    /// And its due time is unchanged.
+    /// </summary>
+    [Fact]
+    public async Task RescheduleAsync_TaskAlreadyCompleted_IsRejectedAndDueTimeUnchanged()
+    {
+        // Arrange
+        var originalDueAt = AsOf.AddHours(-3);
+        var reminderTask = BuildReminderTask(
+            dueAt: originalDueAt, status: ReminderStatus.Completed, completedAt: originalDueAt);
+        await postgres.SaveAsync(reminderTask);
+
+        // Act
+        var result = await _sut.RescheduleAsync(reminderTask.Id, AsOf.AddHours(1), CancellationToken.None);
+
+        // Assert
+        Assert.Equal(ErrorCode.TaskAlreadyCompleted, result.Error);
+        var stored = await _repository.FindAsync(reminderTask.Id, CancellationToken.None);
+        Assert.Equal(originalDueAt, stored!.DueAt);
+    }
+
+    /// <summary>
+    /// When no task carries the requested identifier
+    /// And it is rescheduled
+    /// Then it is refused rather than silently doing nothing.
+    /// </summary>
+    [Fact]
+    public async Task RescheduleAsync_TaskDoesNotExist_IsRejected()
+    {
+        // Act
+        var result = await _sut.RescheduleAsync(Guid.NewGuid(), AsOf.AddHours(1), CancellationToken.None);
+
+        // Assert
+        Assert.Equal(ErrorCode.TaskNotFound, result.Error);
+    }
+
+    /// <summary>
     /// When a captured request carries a title and an already-resolved due instant
     /// And it is created
     /// Then a pending task is stored with that title and due instant
