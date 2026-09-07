@@ -72,4 +72,9 @@ public enum ErrorCode
     /// The chat model called a tool that is not among those registered.
     /// </summary>
     ModelNamedUnknownTool,
+
+    /// <summary>
+    /// An action was called with an argument it does not recognise.
+    /// </summary>
+    TaskActionArgumentUnrecognized,
 }

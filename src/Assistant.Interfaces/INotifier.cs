@@ -63,4 +63,29 @@ public interface INotifier
     /// not simply omitting the argument.
     /// </remarks>
     Task MarkCompletedTaskAsync(int messageId, string text, CancellationToken ct);
+
+    /// <summary>
+    /// Updates a previously sent task message to reflect a change other than completion -- a new
+    /// due time, for example -- keeping its task keyboard attached.
+    /// </summary>
+    /// <param name="messageId">Identifier of the message to edit.</param>
+    /// <param name="taskId">
+    /// The task the message announces. The adapter needs this to rebuild a channel-neutral handle
+    /// for each action it re-attaches -- it never sees any other part of a database shape.
+    /// </param>
+    /// <param name="text">
+    /// The message body, as plain text. The adapter escapes whatever its channel requires
+    /// before sending, so callers must not pre-escape.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once the edit has been accepted.</returns>
+    /// <remarks>
+    /// Distinct from <see cref="MarkCompletedTaskAsync"/>, which clears the keyboard: the task
+    /// this message announces is not finished, only some other field of it changed, so the same
+    /// actions it could already accept must remain tappable. The keyboard this attaches is built
+    /// the same way <see cref="SendTaskAsync"/>'s own is -- from <paramref name="taskId"/> alone,
+    /// never from a caller-supplied keyboard -- so both methods stay in agreement as new actions
+    /// are added.
+    /// </remarks>
+    Task UpdateTaskAsync(int messageId, Guid taskId, string text, CancellationToken ct);
 }

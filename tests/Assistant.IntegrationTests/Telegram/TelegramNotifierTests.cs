@@ -1,5 +1,7 @@
+using Assistant.Contracts;
 using Assistant.Impl;
 using Assistant.Impl.Settings;
+using Assistant.Impl.Telegram;
 using Assistant.IntegrationTests.Infrastructure;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -141,6 +143,43 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
 
         // Act
         await _sut.MarkCompletedTaskAsync(messageId, text, CancellationToken.None);
+
+        // Assert
+        Assert.Equivalent(expected, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);
+    }
+
+    /// <summary>
+    /// When a task message is updated
+    /// And its title contains "&amp;", "&lt;" and "&gt;"
+    /// Then the edit escapes all three in order and re-attaches the Done and Schedule buttons.
+    /// </summary>
+    /// <remarks>
+    /// The expected string was worked out by hand, the same discipline
+    /// <see cref="SendAsync_TextContainsAngleBracketsAndAmpersand_EscapesAllThreeInOrder"/> uses.
+    /// The expected keyboard is asserted only because <c>strict: true</c> compares the whole
+    /// payload -- this test's own subject is escaping, not the keyboard, which
+    /// <c>CallbackRouterTests</c> already proves through a real tap.
+    /// </remarks>
+    [Fact]
+    public async Task UpdateTaskAsync_TextContainsAngleBracketsAndAmpersand_EscapesAllThreeInOrder()
+    {
+        // Arrange
+        const int messageId = 42;
+        var taskId = Guid.NewGuid();
+        const string text = "Meet R&D <at 5> & confirm";
+        var expected = new EditMessageTextPayload(
+            OwnerChatId, messageId, "Meet R&amp;D &lt;at 5&gt; &amp; confirm", "Html",
+            new ReplyMarkupPayload(
+            [
+                [
+                    new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, taskId)),
+                    new InlineButtonPayload(
+                        TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, taskId, "+1h")),
+                ],
+            ]));
+
+        // Act
+        await _sut.UpdateTaskAsync(messageId, taskId, text, CancellationToken.None);
 
         // Assert
         Assert.Equivalent(expected, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);

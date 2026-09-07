@@ -1,6 +1,8 @@
 using Assistant.Contracts;
+using Assistant.Impl.Mapping;
 using Assistant.Impl.Settings;
 using Assistant.Interfaces;
+using Assistant.Models;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -13,40 +15,45 @@ namespace Assistant.Impl.Telegram;
 /// </summary>
 /// <param name="settings">Validated Telegram configuration, which carries the owner's chat.</param>
 /// <param name="bot">The Telegram client, already pointed at a base address.</param>
-/// <param name="notifier">Where the completed-task edit is delivered on a successful action.</param>
+/// <param name="notifier">Where a successful action's edit is delivered.</param>
 /// <param name="actions">
 /// Every registered task action, resolved by matching <see cref="TaskActionDefinition.Key"/>
 /// against each one's <see cref="ITaskAction.Definition"/>.
 /// </param>
+/// <param name="clock">Renders a stored due instant back in the configured local zone.</param>
 /// <remarks>
 /// The callback query is answered last in every branch, after any edit a successful action
-/// triggers, never before -- every reachable path through <see cref="HandleAsync"/> ends with
-/// exactly one call to <see cref="ITelegramBotClient"/>'s answer method and nothing after it, so
-/// observing that one call is enough to know the whole update has been fully handled. The sole
-/// exception is the first guard's bare early return, which answers nothing because there is no
-/// callback query to answer at all -- and that branch is unreachable in practice, since
-/// <see cref="TelegramListener.DispatchAsync"/> only invokes handlers whose <see cref="Handles"/>
-/// matches the update's own type, and this handler declares <see cref="UpdateType.CallbackQuery"/>.
+/// triggers, never before. The sole exception is the first guard's bare early return, unreachable
+/// in practice since <see cref="TelegramListener.DispatchAsync"/> only invokes handlers whose
+/// <see cref="Handles"/> matches the update's own type.
 /// <para>
-/// <c>Message.Text</c> is bound with a plain <c>var</c>, not a null-checked pattern, because
-/// Telegram omits a message's text once it judges the message too old to still carry content --
-/// exactly the age an old reminder's Done button can reach in chat history. The action still
-/// runs and the query is still answered in that case; only the completed-task edit is skipped,
-/// since there is no text left to strike through.
+/// Which edit a successful action gets is decided by the resulting task's own
+/// <see cref="ReminderTask.Status"/>, never by which action ran: a
+/// <see cref="ReminderStatus.Completed"/> task strikes through and loses its keyboard via
+/// <see cref="INotifier.MarkCompletedTaskAsync"/>; any other status re-renders in place via
+/// <see cref="INotifier.UpdateTaskAsync"/>, text rebuilt fresh from the task. This method names
+/// neither <c>DoneAction</c> nor <c>ScheduleAction</c> anywhere in its body -- the task's own
+/// status decides, so a future action needs no change here.
+/// </para>
+/// <para>
+/// <c>Message.Text</c> is bound with a plain <c>var</c> because Telegram omits it once a message
+/// is judged too old to still carry content. This guards only
+/// <see cref="INotifier.MarkCompletedTaskAsync"/>, which needs the prior text to strike through;
+/// <see cref="INotifier.UpdateTaskAsync"/> builds its text fresh from the task and runs
+/// unconditionally.
 /// </para>
 /// <para>
 /// The owner check lives inline here, the same as <see cref="MessageHandler"/>'s own remarks
-/// explain: nothing in <see cref="ITelegramUpdateHandler"/> or <see cref="TelegramListener"/>
-/// enforces it. Unlike <see cref="MessageHandler"/>, a non-owner's tap is still answered -- spec
-/// 6.4 requires every callback query to be answered, owner or not, or Telegram leaves that
-/// tapper's own client spinning -- but the action itself never runs and nothing is edited.
+/// explain. Unlike <see cref="MessageHandler"/>, a non-owner's tap is still answered, per spec 6.4,
+/// but the action itself never runs and nothing is edited.
 /// </para>
 /// </remarks>
 internal sealed class CallbackRouter(
     TelegramSettings settings,
     ITelegramBotClient bot,
     INotifier notifier,
-    IEnumerable<ITaskAction> actions) : ITelegramUpdateHandler
+    IEnumerable<ITaskAction> actions,
+    ILocalTimeResolver clock) : ITelegramUpdateHandler
 {
     private const string ThatButtonIsNoLongerValid = "That button is no longer valid.";
 
@@ -82,7 +89,7 @@ internal sealed class CallbackRouter(
             return;
         }
 
-        if (!CallbackCodec.TryDecode(data, out var actionKey, out var taskId))
+        if (!CallbackCodec.TryDecode(data, out var actionKey, out var taskId, out var argument))
         {
             await bot.AnswerCallbackQuery(callbackQueryId, ThatButtonIsNoLongerValid, cancellationToken: ct);
             return;
@@ -96,17 +103,30 @@ internal sealed class CallbackRouter(
             return;
         }
 
-        var result = await action.ExecuteAsync(taskId, string.Empty, ct);
+        var result = await action.ExecuteAsync(taskId, argument, ct);
 
-        if (result.IsSuccess && messageText is not null)
+        if (result.IsSuccess)
         {
-            await notifier.MarkCompletedTaskAsync(messageId, messageText, ct);
+            var task = result.Value!;
+
+            if (task.Status == ReminderStatus.Completed)
+            {
+                if (messageText is not null)
+                {
+                    await notifier.MarkCompletedTaskAsync(messageId, messageText, ct);
+                }
+            }
+            else
+            {
+                await notifier.UpdateTaskAsync(messageId, task.Id, task.ToMessageText(clock), ct);
+            }
         }
 
         var reply = result switch
         {
             { IsSuccess: true } => null,
             { Error: ErrorCode.TaskAlreadyCompleted } => AlreadyDone,
+            { Error: ErrorCode.TaskActionArgumentUnrecognized } => ThatButtonIsNoLongerValid,
             _ => CouldNotFindThatTask,
         };
 

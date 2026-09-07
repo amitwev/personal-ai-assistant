@@ -1,4 +1,5 @@
 using Assistant.Contracts;
+using Assistant.Impl.Services.Actions;
 using Assistant.Impl.Settings;
 using Assistant.Interfaces;
 using Telegram.Bot;
@@ -38,31 +39,32 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Builds a single button, the catalogue's <c>Done</c> entry, directly rather than by
-    /// iterating <c>TaskActions.All</c> -- <c>All</c> has exactly one entry, and a loop is
-    /// machinery for a plurality that does not exist. The
-    /// <see cref="InlineKeyboardMarkup(IEnumerable{InlineKeyboardButton})"/> overload an iteration
-    /// would need binds to the same row-wrapping constructor described in the
-    /// <see cref="NoButtons"/> comment above, so iterating would silently fix the layout at
-    /// "everything in one row" -- a decision that belongs to F11, which must also decide which
-    /// actions a given reminder shows. The button's callback data is
-    /// <c>CallbackCodec.Encode</c> applied to <c>Done.Key</c> and <paramref name="taskId"/>, the
-    /// same encoding <c>CallbackRouter</c> decodes on a tap. Its label is sent as-is:
+    /// Builds both the <c>Done</c> and <c>+1h</c> buttons by hand, in one row, rather than by
+    /// iterating <c>TaskActions.All</c> -- a task message carries exactly these two, and a loop
+    /// is machinery for a plurality that does not exist. The
+    /// <see cref="InlineKeyboardMarkup(System.Collections.Generic.IEnumerable{InlineKeyboardButton})"/>
+    /// overload binds to the constructor that wraps its argument in one row, producing
+    /// <c>{"inline_keyboard":[[...]]}</c> on the wire -- exactly the single-row layout wanted
+    /// here. Each button's callback data is <c>CallbackCodec.Encode</c> applied to its key and
+    /// <paramref name="taskId"/> (with <c>+1h</c> also carrying <see cref="ScheduleAction.PlusOneHour"/>),
+    /// the same encoding <c>CallbackRouter</c> decodes on a tap. Labels are sent as-is:
     /// <c>parse_mode</c> governs the message body, not a button's text, which Telegram carries as
-    /// a plain JSON string rather than parsed markup -- so a future label containing "&amp;" or
-    /// "&lt;" would still need no escaping here.
+    /// a plain JSON string rather than parsed markup.
     /// </remarks>
-    public async Task SendTaskAsync(Guid taskId, string text, CancellationToken ct)
-    {
-        var keyboard = new InlineKeyboardMarkup(
-            InlineKeyboardButton.WithCallbackData(
-                TaskActions.Done.Label,
-                CallbackCodec.Encode(TaskActions.Done.Key, taskId))
-        );
-
+    public async Task SendTaskAsync(Guid taskId, string text, CancellationToken ct) =>
         await bot.SendMessage(
-            settings.OwnerChatId, Escape(text), ParseMode.Html, replyMarkup: keyboard, cancellationToken: ct);
-    }
+            settings.OwnerChatId, Escape(text), ParseMode.Html,
+            replyMarkup: BuildTaskKeyboard(taskId), cancellationToken: ct);
+
+    private static InlineKeyboardMarkup BuildTaskKeyboard(Guid taskId) => new(
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData(
+                TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, taskId)),
+            InlineKeyboardButton.WithCallbackData(
+                TaskActions.Schedule.Label,
+                CallbackCodec.Encode(TaskActions.Schedule.Key, taskId, ScheduleAction.PlusOneHour)),
+        });
 
     /// <inheritdoc/>
     /// <remarks>
@@ -75,6 +77,17 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
         await bot.EditMessageText(
             settings.OwnerChatId, messageId, $"<s>{Escape(text)}</s>", ParseMode.Html, NoButtons,
             cancellationToken: ct);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Re-attaches the same two-button keyboard <see cref="SendTaskAsync"/> would build fresh for
+    /// <paramref name="taskId"/> -- the task this message announces is not finished, so whatever
+    /// it could already accept a tap on, it must still accept a tap on.
+    /// </remarks>
+    public async Task UpdateTaskAsync(int messageId, Guid taskId, string text, CancellationToken ct) =>
+        await bot.EditMessageText(
+            settings.OwnerChatId, messageId, Escape(text), ParseMode.Html,
+            BuildTaskKeyboard(taskId), cancellationToken: ct);
 
     // "&" must be replaced first. Doing "<" or ">" first and "&" after would re-escape the
     // ampersand that replacement just introduced — "<" becomes "&lt;", then that "&" becomes

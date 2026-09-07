@@ -231,8 +231,8 @@ Rules enforced inside it, in one place:
 
 - Completing a cancelled task is rejected.
 - Completing an already-completed task is refused, protecting its original `CompletedAt` timestamp; a UI like an inline button can still treat this rejection as a safe duplicate.
-- Snooze and reschedule will clear `ReminderSentAt` and reset `DeliveryAttempts`, so the task fires again — the shape this pairing takes once `DeliveryAttempts` returns (F11); today only `MarkReminderSentAsync` sets `ReminderSentAt`, and there is no `DeliveryAttempts` column yet. **This pairing is the reason a single writer is mandatory** — setting one without the other silently stops a task from ever reminding again.
-- Snooze or reschedule on a completed task is rejected.
+- `RescheduleAsync` (F11) sets `DueAt` and clears `ReminderSentAt`, so the task fires again, including a task that had no `DueAt` at all. It does not reset `DeliveryAttempts`: that column does not exist yet and returns at F13, not F11 as this section once said. **Pairing `DueAt` with `ReminderSentAt` is the reason a single writer is mandatory.**
+- Rescheduling a completed task is rejected.
 - `MarkReminderSent` on a task with no `DueAt` is rejected.
 - `UpdatedAt` is stamped on every mutation.
 
@@ -443,11 +443,12 @@ The `v1:` prefix means buttons left in chat history degrade gracefully when the 
 | Button | Action | Effect |
 | :--- | :--- | :--- |
 | `Done` | `DoneAction` | `CompleteAsync`; message edited to show it struck through, buttons removed |
-| `Snooze 1h` | `SnoozeAction` (arg `1h`) | `SnoozeAsync(1h)`; clears `ReminderSentAt` so it fires again |
-| `Tomorrow` | `RescheduleAction` (arg `tomorrow`) | Moves `DueAt` to 09:00 Jerusalem the next day |
-| `Edit` | `EditAction` | Replies asking what to change; the next free-text message is routed to `update_task` for that task ID |
+| `+1h` | `ScheduleAction` (arg `+1h`) | `RescheduleAsync` to one hour from now; clears `ReminderSentAt` so it fires again |
 
-`EditAction` is the only one that costs an LLM call, and only on the follow-up message.
+As shipped at F11-3: two buttons, one action beyond `Done`. `+1h` stands alone rather than opening
+a menu -- F11-4 turns it into one. No action costs an LLM call; editing a task's title or notes
+through a follow-up message (`EditAction`) was dropped from an earlier design with no replacement
+-- it is not scheduled anywhere in this backlog.
 
 Three required behaviours:
 
