@@ -42,8 +42,11 @@ public interface ITaskService
     /// <param name="id">The task to complete.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>
-    /// Success, or the reason it was refused. Refused when no task carries the identifier, or
-    /// when the task has already been completed.
+    /// The completed task, or the reason it was refused: no task carries the identifier, or the
+    /// task has already been completed. Returning the task, not a bare success, matches
+    /// <see cref="RescheduleAsync"/>'s own shape -- a caller acts on the row just written without
+    /// a second read, the same reason <see cref="CreateAsync"/> and <see cref="RescheduleAsync"/>
+    /// already return theirs.
     /// </returns>
     /// <remarks>
     /// A second call on an already-completed task is refused with
@@ -51,7 +54,7 @@ public interface ITaskService
     /// left exactly as the first call set it, so <see cref="ReminderTask.CompletedAt"/> always
     /// carries the instant of the first completion, never a later one.
     /// </remarks>
-    Task<Result> CompleteAsync(Guid id, CancellationToken ct);
+    Task<Result<ReminderTask>> CompleteAsync(Guid id, CancellationToken ct);
 
     /// <summary>
     /// Creates a new task.

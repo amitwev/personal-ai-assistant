@@ -1,5 +1,6 @@
 using Assistant.Contracts;
 using Assistant.Interfaces;
+using Assistant.Models;
 
 namespace Assistant.Impl.Services.Actions;
 
@@ -13,6 +14,6 @@ internal sealed class DoneAction(ITaskService taskService) : ITaskAction
     public TaskActionDefinition Definition => TaskActions.Done;
 
     /// <inheritdoc/>
-    public Task<Result> ExecuteAsync(Guid taskId, CancellationToken ct) =>
+    public Task<Result<ReminderTask>> ExecuteAsync(Guid taskId, string argument, CancellationToken ct) =>
         taskService.CompleteAsync(taskId, ct);
 }

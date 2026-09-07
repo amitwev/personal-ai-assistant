@@ -46,18 +46,18 @@ internal sealed class TaskService(ITaskRepository repository, TimeProvider timeP
         repository.GetDueRemindersAsync(timeProvider.GetUtcNow(), limit, ct);
 
     /// <inheritdoc/>
-    public async Task<Result> CompleteAsync(Guid id, CancellationToken ct)
+    public async Task<Result<ReminderTask>> CompleteAsync(Guid id, CancellationToken ct)
     {
         var task = await repository.FindAsync(id, ct);
 
         if (task is null)
         {
-            return Result.Failure(ErrorCode.TaskNotFound);
+            return Result<ReminderTask>.Failure(ErrorCode.TaskNotFound);
         }
 
         if (task.Status == ReminderStatus.Completed)
         {
-            return Result.Failure(ErrorCode.TaskAlreadyCompleted);
+            return Result<ReminderTask>.Failure(ErrorCode.TaskAlreadyCompleted);
         }
 
         var now = timeProvider.GetUtcNow();
@@ -67,7 +67,7 @@ internal sealed class TaskService(ITaskRepository repository, TimeProvider timeP
         task.UpdatedAt = now;
         await repository.UpdateAsync(task, ct);
 
-        return Result.Success();
+        return Result<ReminderTask>.Success(task);
     }
 
     /// <inheritdoc/>
