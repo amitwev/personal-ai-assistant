@@ -14,15 +14,22 @@ namespace Assistant.Impl.Ai;
 /// </remarks>
 internal sealed class SystemPrompt(ILocalTimeResolver clock)
 {
+    private const string RolePrompt =
+        "You capture tasks for one person. Read their message and decide whether it names "
+        + "something they need to do. If it does, call create_task. If it does not, call no "
+        + "tool. Never chat, ask questions, or offer help. ";
+
     /// <summary>
     /// Builds the prompt text for the current instant.
     /// </summary>
     /// <returns>
-    /// The current time in the configured zone, that zone's identifier named twice, and the two
-    /// instructions the model needs to answer with an absolute local time.
+    /// The role paragraph stating what the model is for, followed by the current time in the
+    /// configured zone, that zone's identifier named twice, and the two instructions the model
+    /// needs to answer with an absolute local time.
     /// </returns>
     public string Build() =>
-        $"Current time: {clock.CurrentLocalTime.ToString("dddd d MMMM yyyy, HH:mm", CultureInfo.InvariantCulture)}, "
+        RolePrompt
+        + $"Current time: {clock.CurrentLocalTime.ToString("dddd d MMMM yyyy, HH:mm", CultureInfo.InvariantCulture)}, "
         + $"{clock.ZoneId} ({FormatOffset(clock.CurrentLocalTime.Offset)}). "
         + $"All times the user gives are {clock.ZoneId} local. "
         + "Return absolute local ISO-8601 datetimes with no offset.";
