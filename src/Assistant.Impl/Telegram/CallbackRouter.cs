@@ -96,7 +96,7 @@ internal sealed class CallbackRouter(
             return;
         }
 
-        var result = await action.ExecuteAsync(taskId, ct);
+        var result = await action.ExecuteAsync(taskId, string.Empty, ct);
 
         if (result.IsSuccess && messageText is not null)
         {

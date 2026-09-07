@@ -97,10 +97,11 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
     /// <summary>
     /// When a pending task is completed
     /// Then its status becomes Completed
-    /// And its CompletedAt is no longer null.
+    /// And its CompletedAt is no longer null
+    /// And the completed task is handed back to the caller.
     /// </summary>
     [Fact]
-    public async Task CompleteAsync_TaskWasPending_SetsStatusAndStampsCompletedAt()
+    public async Task CompleteAsync_TaskWasPending_SetsStatusAndStampsCompletedAtAndReturnsIt()
     {
         // Arrange
         var reminderTask = BuildReminderTask(dueAt: AsOf.AddHours(-1));
@@ -111,6 +112,8 @@ public sealed class TaskServiceTests(PostgresFixture postgres) : IAsyncLifetime
 
         // Assert
         Assert.True(result.IsSuccess);
+        Assert.Equal(ReminderStatus.Completed, result.Value!.Status);
+        Assert.NotNull(result.Value.CompletedAt);
         var stored = await _repository.FindAsync(reminderTask.Id, CancellationToken.None);
         Assert.Equal(ReminderStatus.Completed, stored!.Status);
         Assert.NotNull(stored.CompletedAt);
