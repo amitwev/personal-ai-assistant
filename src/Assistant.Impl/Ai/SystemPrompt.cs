@@ -15,9 +15,11 @@ namespace Assistant.Impl.Ai;
 internal sealed class SystemPrompt(ILocalTimeResolver clock)
 {
     private const string RolePrompt =
-        "You capture tasks for one person. Read their message and decide whether it names "
-        + "something they need to do. If it does, call create_task. If it does not, call no "
-        + "tool. Never chat, ask questions, or offer help. ";
+        "You capture tasks for one person. A task is an action they intend to take later; call "
+        + "create_task only for that. A greeting, a test message, a passing remark, a question, "
+        + "or a note about what not to do is not a task. When the message is not a task, do not "
+        + "call any tool at all -- reply with one short sentence saying there is nothing to "
+        + "capture. Never offer help, ask what they want, or start a conversation. ";
 
     /// <summary>
     /// Builds the prompt text for the current instant.
