@@ -10,7 +10,8 @@ using Telegram.Bot.Types.Enums;
 namespace Assistant.Impl.Telegram;
 
 /// <summary>
-/// Routes an inline button's tap to the <see cref="ITaskAction"/> its callback data names, then
+/// Routes an inline button's tap to the <see cref="ITaskAction"/> its callback data names, or
+/// swaps the message's keyboard when the callback names an <see cref="ITaskNavigation"/>, then
 /// always answers the callback query.
 /// </summary>
 /// <param name="settings">Validated Telegram configuration, which carries the owner's chat.</param>
@@ -19,6 +20,13 @@ namespace Assistant.Impl.Telegram;
 /// <param name="actions">
 /// Every registered task action, resolved by matching <see cref="TaskActionDefinition.Key"/>
 /// against each one's <see cref="ITaskAction.Definition"/>.
+/// </param>
+/// <param name="navigations">
+/// Every registered keyboard navigation, resolved the same way <paramref name="actions"/> is, by
+/// matching <see cref="TaskNavigationDefinition.Key"/> against each one's
+/// <see cref="ITaskNavigation.Definition"/>. Tried only once no registered action's key matches,
+/// since the two catalogues' keys are disjoint by construction (<c>done</c>/<c>schedule</c> versus
+/// <c>menu</c>/<c>back</c>) and never need to race.
 /// </param>
 /// <param name="clock">Renders a stored due instant back in the configured local zone.</param>
 /// <remarks>
@@ -33,14 +41,16 @@ namespace Assistant.Impl.Telegram;
 /// <see cref="INotifier.MarkCompletedTaskAsync"/>; any other status re-renders in place via
 /// <see cref="INotifier.UpdateTaskAsync"/>, text rebuilt fresh from the task. This method names
 /// neither <c>DoneAction</c> nor <c>ScheduleAction</c> anywhere in its body -- the task's own
-/// status decides, so a future action needs no change here.
+/// status decides, so a future action needs no change here. A successful action edit also
+/// attaches the main actions keyboard, closing any menu the tap came from -- no action needs to
+/// know a menu was open to close it.
 /// </para>
 /// <para>
 /// <c>Message.Text</c> is bound with a plain <c>var</c> because Telegram omits it once a message
-/// is judged too old to still carry content. This guards only
-/// <see cref="INotifier.MarkCompletedTaskAsync"/>, which needs the prior text to strike through;
-/// <see cref="INotifier.UpdateTaskAsync"/> builds its text fresh from the task and runs
-/// unconditionally.
+/// is judged too old to still carry content. This guards <see cref="INotifier.MarkCompletedTaskAsync"/>
+/// and <see cref="INotifier.ShowKeyboardAsync"/>, which each need prior text (to strike through or
+/// preserve, respectively); <see cref="INotifier.UpdateTaskAsync"/> builds its text fresh from the
+/// task and runs unconditionally.
 /// </para>
 /// <para>
 /// The owner check lives inline here, the same as <see cref="MessageHandler"/>'s own remarks
@@ -53,6 +63,7 @@ internal sealed class CallbackRouter(
     ITelegramBotClient bot,
     INotifier notifier,
     IEnumerable<ITaskAction> actions,
+    IEnumerable<ITaskNavigation> navigations,
     ILocalTimeResolver clock) : ITelegramUpdateHandler
 {
     private const string ThatButtonIsNoLongerValid = "That button is no longer valid.";
@@ -99,6 +110,19 @@ internal sealed class CallbackRouter(
 
         if (action is null)
         {
+            var navigation = navigations.FirstOrDefault(n => n.Definition.Key == actionKey);
+
+            if (navigation is not null)
+            {
+                if (messageText is not null)
+                {
+                    await notifier.ShowKeyboardAsync(messageId, taskId, messageText, navigation.Definition.Shows, ct);
+                }
+
+                await bot.AnswerCallbackQuery(callbackQueryId, cancellationToken: ct);
+                return;
+            }
+
             await bot.AnswerCallbackQuery(callbackQueryId, ThatButtonIsNoLongerValid, cancellationToken: ct);
             return;
         }

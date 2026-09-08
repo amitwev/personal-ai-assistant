@@ -273,7 +273,8 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
                 [
                     new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, task.Id)),
                     new InlineButtonPayload(
-                        TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h")),
+                        TaskNavigations.OpenSchedule.Label,
+                        CallbackCodec.Encode(TaskNavigations.OpenSchedule.Key, task.Id)),
                 ],
             ]));
         Assert.Equivalent(expectedEdit, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);
@@ -342,6 +343,114 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
     }
 
     /// <summary>
+    /// When the owner taps Schedule on the main keyboard
+    /// Then the task itself is unchanged
+    /// And the message is edited in place to show the same text with the schedule menu attached
+    /// And the callback query is answered with no toast.
+    /// </summary>
+    [Fact]
+    public async Task Listener_OwnerTapsScheduleNavigation_OpensTheScheduleMenuWithoutChangingTheTask()
+    {
+        // Arrange
+        var originalDueAt = AsOf.AddHours(-2);
+        var task = BuildReminderTask(dueAt: originalDueAt);
+        await postgres.SaveAsync(task);
+        var data = CallbackCodec.Encode(TaskNavigations.OpenSchedule.Key, task.Id);
+        const string messageText = "call the bank -- due Tuesday 25 August 2026, 10:00.";
+        await wireMock.SeedCallbackQueryUpdatesAsync(
+            new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, messageText, data));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
+        Assert.Equivalent(new AnswerCallbackQueryPayload(CallbackQueryId, null), Assert.Single(answered), strict: true);
+
+        var expectedEdit = new EditMessageTextPayload(
+            OwnerChatId, MessageId, messageText, "Html",
+            new ReplyMarkupPayload(
+            [
+                [
+                    new InlineButtonPayload(
+                        TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h")),
+                    new InlineButtonPayload(
+                        TaskNavigations.Back.Label, CallbackCodec.Encode(TaskNavigations.Back.Key, task.Id)),
+                ],
+            ]));
+        Assert.Equivalent(expectedEdit, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);
+
+        var stored = await _repository.FindAsync(task.Id, CancellationToken.None);
+        Assert.Equal(originalDueAt, stored!.DueAt);
+    }
+
+    /// <summary>
+    /// When the owner taps Back inside the schedule menu
+    /// Then the task itself is unchanged
+    /// And the message is edited in place to show the same text with the main keyboard attached
+    /// And the callback query is answered with no toast.
+    /// </summary>
+    [Fact]
+    public async Task Listener_OwnerTapsBack_ClosesTheScheduleMenuWithoutChangingTheTask()
+    {
+        // Arrange
+        var originalDueAt = AsOf.AddHours(-2);
+        var task = BuildReminderTask(dueAt: originalDueAt);
+        await postgres.SaveAsync(task);
+        var data = CallbackCodec.Encode(TaskNavigations.Back.Key, task.Id);
+        const string messageText = "call the bank -- due Tuesday 25 August 2026, 10:00.";
+        await wireMock.SeedCallbackQueryUpdatesAsync(
+            new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, messageText, data));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
+        Assert.Equivalent(new AnswerCallbackQueryPayload(CallbackQueryId, null), Assert.Single(answered), strict: true);
+
+        var expectedEdit = new EditMessageTextPayload(
+            OwnerChatId, MessageId, messageText, "Html",
+            new ReplyMarkupPayload(
+            [
+                [
+                    new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, task.Id)),
+                    new InlineButtonPayload(
+                        TaskNavigations.OpenSchedule.Label,
+                        CallbackCodec.Encode(TaskNavigations.OpenSchedule.Key, task.Id)),
+                ],
+            ]));
+        Assert.Equivalent(expectedEdit, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);
+
+        var stored = await _repository.FindAsync(task.Id, CancellationToken.None);
+        Assert.Equal(originalDueAt, stored!.DueAt);
+    }
+
+    /// <summary>
+    /// When a navigation button is tapped on a reminder whose message is too old for Telegram to carry its text
+    /// Then the callback query is still answered
+    /// And no edit is attempted, since there is no prior text to preserve.
+    /// </summary>
+    [Fact]
+    public async Task Listener_NavigationTappedOnATooOldMessage_AnswersButEditsNothing()
+    {
+        // Arrange
+        var task = BuildReminderTask();
+        await postgres.SaveAsync(task);
+        var data = CallbackCodec.Encode(TaskNavigations.OpenSchedule.Key, task.Id);
+        await wireMock.SeedCallbackQueryUpdatesAsync(
+            new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, null, data));
+
+        // Act
+        await _sut.StartAsync(CancellationToken.None);
+
+        // Assert
+        var answered = await wireMock.WaitForAnsweredCallbacksAsync(1, AnswerDeadline);
+        Assert.Equal(CallbackQueryId, Assert.Single(answered).CallbackQueryId);
+        Assert.Empty(await wireMock.EditedMessagesAsync());
+    }
+
+    /// <summary>
     /// When every ITaskAction registered in the real container is resolved from a scope
     /// Then its key set is exactly the catalogue's declared key set, in both directions.
     /// </summary>
@@ -358,5 +467,24 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         Assert.Equal(
             TaskActions.All.Select(d => d.Key).Order(),
             resolved.Select(a => a.Definition.Key).Order());
+    }
+
+    /// <summary>
+    /// When every ITaskNavigation registered in the real container is resolved from a scope
+    /// Then its key set is exactly the catalogue's declared key set, in both directions.
+    /// </summary>
+    [Fact]
+    public void ITaskNavigation_RegisteredImplementations_MatchTheCatalogueKeysExactly()
+    {
+        // Arrange
+        using var scope = _provider.CreateScope();
+
+        // Act
+        var resolved = scope.ServiceProvider.GetServices<ITaskNavigation>();
+
+        // Assert
+        Assert.Equal(
+            TaskNavigations.All.Select(d => d.Key).Order(),
+            resolved.Select(n => n.Definition.Key).Order());
     }
 }

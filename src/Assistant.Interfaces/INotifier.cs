@@ -1,3 +1,5 @@
+using Assistant.Contracts;
+
 namespace Assistant.Interfaces;
 
 /// <summary>
@@ -88,4 +90,29 @@ public interface INotifier
     /// are added.
     /// </remarks>
     Task UpdateTaskAsync(int messageId, Guid taskId, string text, CancellationToken ct);
+
+    /// <summary>
+    /// Updates a previously sent task message to show a different keyboard, keeping its text and
+    /// the task itself both unchanged.
+    /// </summary>
+    /// <param name="messageId">Identifier of the message to edit.</param>
+    /// <param name="taskId">
+    /// The task the message announces. The adapter needs this to build whichever keyboard
+    /// <paramref name="keyboard"/> names -- it never sees any other part of a database shape.
+    /// </param>
+    /// <param name="text">
+    /// The message's current text, preserved exactly. A navigation tap changes no task, so there
+    /// is nothing to rebuild this from; the caller supplies the same text the message already
+    /// carries.
+    /// </param>
+    /// <param name="keyboard">Which keyboard to attach.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes once the edit has been accepted.</returns>
+    /// <remarks>
+    /// Distinct from <see cref="UpdateTaskAsync"/>, which always attaches the main actions
+    /// keyboard because a successful task action always closes any open menu (see
+    /// <c>CallbackRouter</c>'s own remarks): this is the method that opens or changes which menu
+    /// is showing, in response to a tap that changed no task at all.
+    /// </remarks>
+    Task ShowKeyboardAsync(int messageId, Guid taskId, string text, TaskKeyboard keyboard, CancellationToken ct);
 }

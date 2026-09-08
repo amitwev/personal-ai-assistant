@@ -21,11 +21,16 @@ public static class TaskActions
         Description: "Marks the task complete. Refused when the task is already complete.");
 
     /// <summary>
-    /// The Schedule button's definition.
+    /// The schedule menu's one preset button today.
     /// </summary>
     /// <remarks>
-    /// The label is "+1h", not "Schedule": there is no menu yet for a "Schedule" label to name.
-    /// F11-4 renames it once tapping the button opens a menu instead of applying one preset.
+    /// The label is still "+1h": that is still the only preset <c>ScheduleAction</c> recognises,
+    /// and "+1h" is still the exact text a tap on this button applies -- only its position moved,
+    /// from the main keyboard into the schedule menu <see cref="TaskNavigations.OpenSchedule"/>
+    /// now opens. The main keyboard's own Schedule-labelled button is that navigation, not this
+    /// action -- see <see cref="TaskNavigations"/>. Once a second preset is registered, each one
+    /// will carry its own label from a dedicated catalogue, and this field's role will need a
+    /// second look then.
     /// </remarks>
     public static TaskActionDefinition Schedule { get; } = new(
         Key: "schedule",
