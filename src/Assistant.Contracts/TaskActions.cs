@@ -40,11 +40,13 @@ public static class TaskActions
     /// <remarks>
     /// Named for the <c>ITaskService.RescheduleAsync</c> call <c>ScheduleAction</c> makes, not for
     /// the button that opens the menu -- that word belongs to <see cref="TaskNavigations.Schedule"/>,
-    /// the main keyboard's own Schedule-labelled button, which acts on no task at all. This entry's
-    /// own <see cref="TaskActionDefinition.Label"/> is "Reschedule" rather than "+1h" because a
-    /// catalogue entry's label is meant for a developer reading this file, not for the button the
-    /// owner sees; the button's own text is rendered straight from <see cref="PlusOneHour"/>, see
-    /// <c>TelegramNotifier.BuildScheduleMenuKeyboard</c>.
+    /// the main keyboard's own Schedule-labelled button, which acts on no task at all. This is the
+    /// one catalogue entry whose <see cref="TaskActionDefinition.Label"/> is not the button's text:
+    /// one action key, "reschedule", serves every preset the schedule menu will ever offer, so the
+    /// button's text belongs to the preset, not to the action. Today there is exactly one preset, so
+    /// the button's own text is rendered straight from <see cref="PlusOneHour"/>, see
+    /// <c>TelegramNotifier.BuildScheduleMenuKeyboard</c>; F11-4b gives each preset its own type,
+    /// carrying that text permanently.
     /// </remarks>
     public static TaskActionDefinition Reschedule { get; } = new(
         Key: "reschedule",
