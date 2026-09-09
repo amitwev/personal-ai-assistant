@@ -13,10 +13,17 @@ namespace Assistant.Contracts;
 public static class TaskActions
 {
     /// <summary>
-    /// The argument the schedule button carries on the wire, and the only one
-    /// <c>ScheduleAction</c> understands -- shared here so the button that sends it and the
-    /// action that accepts it can never drift apart.
+    /// The schedule menu's one preset button today, both its own label and the argument it
+    /// carries on the wire.
     /// </summary>
+    /// <remarks>
+    /// A single const serves both roles only because there is exactly one preset, so its button
+    /// text and its wire argument happen to be the identical string. They are not the same thing
+    /// on principle -- a future preset such as "Tonight 20:00" would need a label with a space and
+    /// a colon next to a lowercase, colon-free argument such as <c>tonight</c>. F11-4b gives each
+    /// preset its own type carrying a separate <c>Argument</c> and <c>Label</c>, which is where
+    /// this const's two roles stop being the same thing and each gets its own home.
+    /// </remarks>
     public const string PlusOneHour = "+1h";
 
     /// <summary>
@@ -31,17 +38,17 @@ public static class TaskActions
     /// The schedule menu's one preset button today.
     /// </summary>
     /// <remarks>
-    /// The label is still "+1h": that is still the only preset <c>ScheduleAction</c> recognises,
-    /// and "+1h" is still the exact text a tap on this button applies -- only its position moved,
-    /// from the main keyboard into the schedule menu <see cref="TaskNavigations.OpenSchedule"/>
-    /// now opens. The main keyboard's own Schedule-labelled button is that navigation, not this
-    /// action -- see <see cref="TaskNavigations"/>. Once a second preset is registered, each one
-    /// will carry its own label from a dedicated catalogue, and this field's role will need a
-    /// second look then.
+    /// Named for the <c>ITaskService.RescheduleAsync</c> call <c>ScheduleAction</c> makes, not for
+    /// the button that opens the menu -- that word belongs to <see cref="TaskNavigations.Schedule"/>,
+    /// the main keyboard's own Schedule-labelled button, which acts on no task at all. This entry's
+    /// own <see cref="TaskActionDefinition.Label"/> is "Reschedule" rather than "+1h" because a
+    /// catalogue entry's label is meant for a developer reading this file, not for the button the
+    /// owner sees; the button's own text is rendered straight from <see cref="PlusOneHour"/>, see
+    /// <c>TelegramNotifier.BuildScheduleMenuKeyboard</c>.
     /// </remarks>
-    public static TaskActionDefinition Schedule { get; } = new(
-        Key: "schedule",
-        Label: "+1h",
+    public static TaskActionDefinition Reschedule { get; } = new(
+        Key: "reschedule",
+        Label: "Reschedule",
         Description: "Moves the task's due time to one hour from now, arming a reminder for the "
             + "first time on a task that had none. Refused when the task is already complete, or "
             + "when the callback carries an argument other than \"+1h\".");
@@ -49,5 +56,5 @@ public static class TaskActions
     /// <summary>
     /// Every declared action, in declaration order.
     /// </summary>
-    public static IReadOnlyList<TaskActionDefinition> All { get; } = [Done, Schedule];
+    public static IReadOnlyList<TaskActionDefinition> All { get; } = [Done, Reschedule];
 }

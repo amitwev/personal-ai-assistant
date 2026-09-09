@@ -647,12 +647,21 @@ marker is cleared; buttons remain attached.
   until retry tracking exists.
 *Settled at F11-4a:*
 - **F11-4 splits into F11-4a and F11-4b**, keeping both pull requests under the 1000-line
-  budget. F11-4a is the architecture: the `ITaskNavigation` seam, `TaskKeyboard`, and the menu
+  budget. F11-4a is the architecture: `TaskNavigations`, `TaskKeyboard`, and the menu
   swapping to `[+1h] [Back]`. F11-4b is the content: `+3h`, `Tonight 20:00`, and `Tomorrow 09:00`,
   with `ILocalTimeResolver` threaded into `ScheduleAction`. F11 stays open until F11-4b lands.
-- **`ITaskNavigation` is the second registration seam**, parallel to `ITaskAction`, for a tap
-  that only swaps which keyboard is attached. `INotifier.ShowKeyboardAsync` edits the message to
-  swap the keyboard while keeping message text unchanged.
+- **A navigation is data, not a registration seam.** `ITaskAction` earns its interface because an
+  action has behaviour and takes dependencies from the container -- `ScheduleAction` needs
+  `ITaskService` and `TimeProvider`. A navigation tap only swaps which keyboard is attached, the
+  same one line for every navigation that will ever exist, so `TaskNavigations` is one more
+  catalogue in `Assistant.Contracts` and `CallbackRouter` reads it directly; no `ITaskNavigation`
+  interface, no implementing classes, no DI registrations ever shipped.
+  `INotifier.ShowKeyboardAsync` edits the message to swap the keyboard while keeping message text
+  unchanged. The catalogue entries were also renamed so each one's property name, wire key, and
+  label agree: `TaskNavigations.OpenSchedule` became `TaskNavigations.Schedule` (key `menu` to
+  `schedule`), and `TaskActions.Schedule` became `TaskActions.Reschedule` (key `schedule` to
+  `reschedule`, label `+1h` to `Reschedule`) -- "Schedule" now names only the navigation that opens
+  the menu, and the action is named for the `RescheduleAsync` call it makes.
 - **Applying `+1h` closes the menu on its own**: a successful action re-renders via `UpdateTaskAsync`,
   which attaches the main keyboard (`TaskKeyboard.Actions`).
 

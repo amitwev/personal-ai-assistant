@@ -88,7 +88,7 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
         {
             new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, task.Id)),
             new InlineButtonPayload(
-                TaskNavigations.OpenSchedule.Label, CallbackCodec.Encode(TaskNavigations.OpenSchedule.Key, task.Id)),
+                TaskNavigations.Schedule.Label, CallbackCodec.Encode(TaskNavigations.Schedule.Key, task.Id)),
         };
         Assert.Equivalent(expectedRow, Assert.Single(sent.ReplyMarkup!.InlineKeyboard), strict: true);
     }

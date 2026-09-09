@@ -11,8 +11,8 @@ namespace Assistant.Impl.Telegram;
 
 /// <summary>
 /// Routes an inline button's tap to the <see cref="ITaskAction"/> its callback data names, or
-/// swaps the message's keyboard when the callback names an <see cref="ITaskNavigation"/>, then
-/// always answers the callback query.
+/// swaps the message's keyboard when the callback names an entry in <see cref="TaskNavigations"/>,
+/// then always answers the callback query.
 /// </summary>
 /// <param name="settings">Validated Telegram configuration, which carries the owner's chat.</param>
 /// <param name="bot">The Telegram client, already pointed at a base address.</param>
@@ -21,19 +21,19 @@ namespace Assistant.Impl.Telegram;
 /// Every registered task action, resolved by matching <see cref="TaskActionDefinition.Key"/>
 /// against each one's <see cref="ITaskAction.Definition"/>.
 /// </param>
-/// <param name="navigations">
-/// Every registered keyboard navigation, resolved the same way <paramref name="actions"/> is, by
-/// matching <see cref="TaskNavigationDefinition.Key"/> against each one's
-/// <see cref="ITaskNavigation.Definition"/>. Tried only once no registered action's key matches,
-/// since the two catalogues' keys are disjoint by construction (<c>done</c>/<c>schedule</c> versus
-/// <c>menu</c>/<c>back</c>) and never need to race.
-/// </param>
 /// <param name="clock">Renders a stored due instant back in the configured local zone.</param>
 /// <remarks>
+/// A navigation tap carries no behaviour and takes no dependency from the container, unlike an
+/// action, so <see cref="TaskNavigations.All"/> is read directly rather than resolved through a
+/// registered seam: tried only once no registered action's key matches. The two catalogues' keys
+/// are disjoint by construction (<c>done</c>/<c>reschedule</c> versus <c>schedule</c>/<c>back</c>),
+/// so trying actions first and navigations second never races.
+/// <para>
 /// The callback query is answered last in every branch, after any edit a successful action
 /// triggers, never before. The sole exception is the first guard's bare early return, unreachable
 /// in practice since <see cref="TelegramListener.DispatchAsync"/> only invokes handlers whose
 /// <see cref="Handles"/> matches the update's own type.
+/// </para>
 /// <para>
 /// Which edit a successful action gets is decided by the resulting task's own
 /// <see cref="ReminderTask.Status"/>, never by which action ran: a
@@ -63,7 +63,6 @@ internal sealed class CallbackRouter(
     ITelegramBotClient bot,
     INotifier notifier,
     IEnumerable<ITaskAction> actions,
-    IEnumerable<ITaskNavigation> navigations,
     ILocalTimeResolver clock) : ITelegramUpdateHandler
 {
     private const string ThatButtonIsNoLongerValid = "That button is no longer valid.";
@@ -110,13 +109,13 @@ internal sealed class CallbackRouter(
 
         if (action is null)
         {
-            var navigation = navigations.FirstOrDefault(n => n.Definition.Key == actionKey);
+            var navigation = TaskNavigations.All.FirstOrDefault(n => n.Key == actionKey);
 
             if (navigation is not null)
             {
                 if (messageText is not null)
                 {
-                    await notifier.ShowKeyboardAsync(messageId, taskId, messageText, navigation.Definition.Shows, ct);
+                    await notifier.ShowKeyboardAsync(messageId, taskId, messageText, navigation.Shows, ct);
                 }
 
                 await bot.AnswerCallbackQuery(callbackQueryId, cancellationToken: ct);

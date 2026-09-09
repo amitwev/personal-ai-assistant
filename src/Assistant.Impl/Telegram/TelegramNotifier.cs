@@ -49,7 +49,7 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
     // Building three private methods rather than one -- BuildKeyboard dispatches by TaskKeyboard,
     // BuildActionsKeyboard and BuildScheduleMenuKeyboard each build one row by hand -- is
     // deliberate at this slice's size: both rows are fixed at exactly two buttons today (Done and
-    // OpenSchedule; +1h and Back), so a loop over a catalogue would be machinery for a plurality
+    // Schedule; +1h and Back), so a loop over a catalogue would be machinery for a plurality
     // that does not exist yet. Once a second preset joins the schedule menu, BuildScheduleMenuKeyboard
     // is the one method that needs to change, to iterate its own preset catalogue instead.
     private static InlineKeyboardMarkup BuildKeyboard(Guid taskId, TaskKeyboard keyboard) => keyboard switch
@@ -65,16 +65,20 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
             InlineKeyboardButton.WithCallbackData(
                 TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, taskId)),
             InlineKeyboardButton.WithCallbackData(
-                TaskNavigations.OpenSchedule.Label,
-                CallbackCodec.Encode(TaskNavigations.OpenSchedule.Key, taskId)),
+                TaskNavigations.Schedule.Label,
+                CallbackCodec.Encode(TaskNavigations.Schedule.Key, taskId)),
         });
 
+    // The button's label and its wire argument are both TaskActions.PlusOneHour, not
+    // TaskActions.Reschedule.Label -- that catalogue entry's label reads "Reschedule" for a
+    // developer skimming the catalogue, but the button itself has always shown "+1h", and
+    // PlusOneHour is the const that names what a tap on it actually sends.
     private static InlineKeyboardMarkup BuildScheduleMenuKeyboard(Guid taskId) => new(
         new[]
         {
             InlineKeyboardButton.WithCallbackData(
-                TaskActions.Schedule.Label,
-                CallbackCodec.Encode(TaskActions.Schedule.Key, taskId, TaskActions.PlusOneHour)),
+                TaskActions.PlusOneHour,
+                CallbackCodec.Encode(TaskActions.Reschedule.Key, taskId, TaskActions.PlusOneHour)),
             InlineKeyboardButton.WithCallbackData(
                 TaskNavigations.Back.Label, CallbackCodec.Encode(TaskNavigations.Back.Key, taskId)),
         });

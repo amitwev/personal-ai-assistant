@@ -174,7 +174,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
                 [
                     new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, taskId)),
                     new InlineButtonPayload(
-                        TaskNavigations.OpenSchedule.Label, CallbackCodec.Encode(TaskNavigations.OpenSchedule.Key, taskId)),
+                        TaskNavigations.Schedule.Label, CallbackCodec.Encode(TaskNavigations.Schedule.Key, taskId)),
                 ],
             ]));
 
@@ -211,8 +211,8 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
             [
                 [
                     new InlineButtonPayload(
-                        TaskActions.Schedule.Label,
-                        CallbackCodec.Encode(TaskActions.Schedule.Key, taskId, TaskActions.PlusOneHour)),
+                        TaskActions.PlusOneHour,
+                        CallbackCodec.Encode(TaskActions.Reschedule.Key, taskId, TaskActions.PlusOneHour)),
                     new InlineButtonPayload(
                         TaskNavigations.Back.Label, CallbackCodec.Encode(TaskNavigations.Back.Key, taskId)),
                 ],

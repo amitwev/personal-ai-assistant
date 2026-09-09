@@ -7,7 +7,6 @@ using Assistant.Impl.Scheduling;
 using Assistant.Impl.Services;
 using Assistant.Impl.Services.Actions;
 using Assistant.Impl.Services.Jobs;
-using Assistant.Impl.Services.Navigations;
 using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
 using Assistant.Interfaces;
@@ -92,8 +91,6 @@ public static class ImplServiceCollectionExtensions
         services.AddScoped<ITelegramUpdateHandler, CallbackRouter>();
         services.AddScoped<ITaskAction, DoneAction>();
         services.AddScoped<ITaskAction, ScheduleAction>();
-        services.AddScoped<ITaskNavigation, OpenScheduleNavigation>();
-        services.AddScoped<ITaskNavigation, BackNavigation>();
         services.AddHostedService<TelegramListener>();
         return services;
     }

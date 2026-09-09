@@ -15,7 +15,7 @@ namespace Assistant.Impl.Services.Actions;
 internal sealed class ScheduleAction(ITaskService taskService, TimeProvider timeProvider) : ITaskAction
 {
     /// <inheritdoc/>
-    public TaskActionDefinition Definition => TaskActions.Schedule;
+    public TaskActionDefinition Definition => TaskActions.Reschedule;
 
     /// <inheritdoc/>
     /// <remarks>

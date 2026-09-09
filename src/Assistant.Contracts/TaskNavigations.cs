@@ -6,9 +6,9 @@ namespace Assistant.Contracts;
 /// on a task, mirrored here for a tap that only changes which keyboard is showing.
 /// </summary>
 /// <remarks>
-/// <see cref="OpenSchedule"/> is declared before <see cref="All"/> because C# runs a type's static
+/// <see cref="Schedule"/> is declared before <see cref="All"/> because C# runs a type's static
 /// member initializers in declaration order, and <see cref="All"/>'s own initializer reads
-/// <see cref="OpenSchedule"/> and <see cref="Back"/> -- reversing the order compiles cleanly but
+/// <see cref="Schedule"/> and <see cref="Back"/> -- reversing the order compiles cleanly but
 /// leaves <see cref="All"/> holding a <see langword="null"/> element, since the one declared later
 /// would not yet have run.
 /// </remarks>
@@ -17,8 +17,8 @@ public static class TaskNavigations
     /// <summary>
     /// The main keyboard's button that opens the schedule menu.
     /// </summary>
-    public static TaskNavigationDefinition OpenSchedule { get; } = new(
-        Key: "menu",
+    public static TaskNavigationDefinition Schedule { get; } = new(
+        Key: "schedule",
         Label: "Schedule",
         Shows: TaskKeyboard.ScheduleMenu,
         Description: "Opens the schedule menu. Changes no task field -- only the keyboard "
@@ -37,5 +37,5 @@ public static class TaskNavigations
     /// <summary>
     /// Every declared navigation, in declaration order.
     /// </summary>
-    public static IReadOnlyList<TaskNavigationDefinition> All { get; } = [OpenSchedule, Back];
+    public static IReadOnlyList<TaskNavigationDefinition> All { get; } = [Schedule, Back];
 }

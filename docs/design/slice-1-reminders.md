@@ -437,21 +437,22 @@ Fires at 07:00 Jerusalem (configurable). Inserts today's Jerusalem local date in
 ### 6.4 Inline buttons
 
 Callback data format: `v1:<action>:<base64-id>[:<arg>]`. The base64 encoding of a 16-byte task id
-is always 24 characters, so the longest string this slice sends -- `v1:schedule:<24 chars>:+1h` --
-is 40 bytes against Telegram's 64-byte limit.
+is always 24 characters, so the longest string this slice sends -- `v1:reschedule:<24 chars>:+1h` --
+is 42 bytes against Telegram's 64-byte limit.
 
 The `v1:` prefix means buttons left in chat history degrade gracefully when the format changes,
 rather than throwing. A tap is resolved against two catalogues, tried in order: `ITaskAction`
-implementations, which act on the task and are resolved by key; and `ITaskNavigation`
-implementations, which only swap which keyboard is attached and are resolved the same way. An
-unrecognised key in either produces a polite message.
+implementations, which act on the task and are resolved by key from the container; and
+`TaskNavigations` entries, which only swap which keyboard is attached and are read directly from
+the catalogue, carrying no behaviour of their own to register. An unrecognised key in either
+produces a polite message.
 
 Main keyboard:
 
 | Button | Kind | Effect |
 | :--- | :--- | :--- |
 | `Done` | `DoneAction` | `CompleteAsync`; message edited to show it struck through, buttons removed |
-| `Schedule` | `TaskNavigations.OpenSchedule` | Attaches the schedule menu keyboard; the task itself is unchanged |
+| `Schedule` | `TaskNavigations.Schedule` | Attaches the schedule menu keyboard; the task itself is unchanged |
 
 Schedule menu:
 
