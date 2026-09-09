@@ -1,0 +1,43 @@
+# An explicit project name, so the production stack never shares a project namespace -- or a
+# network, or an orphan sweep -- with the compose.test.yaml stack that sits in this same
+# directory and would otherwise default to the same name.
+name: assistant
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: assistant
+      POSTGRES_USER: assistant
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set -- copy .env.example to .env and fill it in}
+    # No host port published on purpose: the worker reaches postgres over the compose network,
+    # and on a public VPS a mapped 5432 is an open door. compose.test.yaml maps 55432 because
+    # the test suite runs outside the containers; nothing here does.
+    volumes:
+      - assistant-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assistant -d assistant"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: src/Assistant.Worker/Dockerfile
+    # env_file carries the secrets from .env. The connection string below is assembled here
+    # instead of living in .env because it is derived from POSTGRES_PASSWORD, not a secret of
+    # its own.
+    env_file: .env
+    environment:
+      DatabaseSettings__ConnectionString: "Host=postgres;Port=5432;Database=assistant;Username=assistant;Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set -- copy .env.example to .env and fill it in}"
+    depends_on:
+      # service_healthy is what lets Program.cs migrate on startup without racing an unready
+      # database.
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  assistant-postgres-data:

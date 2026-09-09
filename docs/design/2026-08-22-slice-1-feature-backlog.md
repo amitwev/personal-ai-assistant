@@ -688,8 +688,11 @@ regains `DeliveryAttempts`; the retry cap enters the due query here.
 the mechanism itself.
 **Reduced by CI:** `.github/workflows/ci.yml` already exists and runs gitleaks, the build, and
 both test suites. F14 inherits only the eval workflow and the image-publishing job (spec §11.6).
+**Reduced by container packaging:** the `Dockerfile` and `compose.yaml` it lists now exist, so
+F14 inherits only the heartbeat file plus the container HEALTHCHECK that watches it, `/status`,
+Serilog, `appsettings.{Environment}.json`, and the image-publishing job.
 
-**Container packaging for the worker** — spec §8, §11.6 · **unscheduled**
+**Container packaging for the worker** — spec §8, §11.6 · **done**
 There is no `compose.yaml` and no worker `Dockerfile` in this repository, and there never has
 been — only `compose.test.yaml`, which serves the test suite. F5b needed the Worker to run
 against a real database for the first time, and in doing so found `AGENTS.md` documenting a
@@ -698,6 +701,15 @@ actually exists today. The work itself remains undone: an image build, secret de
 restart policy. F14 already lists `Dockerfile` and `compose.yaml` among its contents, so this is
 not a competing feature number — it is a flag that the gap F5b found is real and directly
 observed, not merely anticipated, and worth tracking on its own until F14 is planned.
+*Settled at container packaging:*
+- The runtime image is Ubuntu-based, not Alpine, because of tzdata and
+  `TimeZoneInfo.FindSystemTimeZoneById`.
+- Postgres publishes no host port.
+- Optional keys in `.env.example` are commented out rather than blank, because a blank value
+  overrides the `appsettings.json` default with an empty string and fails validation.
+- The worker has no HEALTHCHECK, because the heartbeat file spec §8 describes is still F14.
+- `compose.yaml` builds locally rather than pulling from GHCR, because the publishing job is
+  still F14 (spec §11.6).
 
 **Continuous integration** — spec §9 step 1, §11.2, §11.3 · **done**
 There is no `.github/workflows` directory in this repository, and there never has been — no pull

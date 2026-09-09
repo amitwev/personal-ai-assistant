@@ -33,6 +33,9 @@ jobs:
       - name: Build with warnings as errors
         run: dotnet build PersonalAssistant.slnx --configuration Release --no-restore
 
+      - name: Build the worker image
+        run: docker build --file src/Assistant.Worker/Dockerfile --tag assistant-worker:ci .
+
       - name: Start Postgres and the stub API
         run: docker compose -f compose.test.yaml up -d --wait
 
