@@ -255,7 +255,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         // Arrange
         var task = BuildReminderTask(dueAt: AsOf.AddDays(-1), reminderSentAt: AsOf.AddDays(-1));
         await postgres.SaveAsync(task);
-        var data = CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h");
+        var data = CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, TaskActions.PlusOneHour);
         await wireMock.SeedCallbackQueryUpdatesAsync(
             new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, task.Title, data));
 
@@ -326,7 +326,7 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
         // Arrange
         var task = BuildReminderTask();
         await postgres.SaveAsync(task);
-        var data = CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h");
+        var data = CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, TaskActions.PlusOneHour);
         await wireMock.SeedCallbackQueryUpdatesAsync(
             new InboundCallbackQuery(10, CallbackQueryId, OwnerChatId, MessageId, null, data));
 
@@ -373,7 +373,8 @@ public sealed class CallbackRouterTests(PostgresFixture postgres, WireMockFixtur
             [
                 [
                     new InlineButtonPayload(
-                        TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, "+1h")),
+                        TaskActions.Schedule.Label,
+                        CallbackCodec.Encode(TaskActions.Schedule.Key, task.Id, TaskActions.PlusOneHour)),
                     new InlineButtonPayload(
                         TaskNavigations.Back.Label, CallbackCodec.Encode(TaskNavigations.Back.Key, task.Id)),
                 ],

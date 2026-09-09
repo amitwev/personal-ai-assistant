@@ -1,5 +1,4 @@
 using Assistant.Contracts;
-using Assistant.Impl.Services.Actions;
 using Assistant.Impl.Settings;
 using Assistant.Interfaces;
 using Telegram.Bot;
@@ -75,7 +74,7 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
         {
             InlineKeyboardButton.WithCallbackData(
                 TaskActions.Schedule.Label,
-                CallbackCodec.Encode(TaskActions.Schedule.Key, taskId, ScheduleAction.PlusOneHour)),
+                CallbackCodec.Encode(TaskActions.Schedule.Key, taskId, TaskActions.PlusOneHour)),
             InlineKeyboardButton.WithCallbackData(
                 TaskNavigations.Back.Label, CallbackCodec.Encode(TaskNavigations.Back.Key, taskId)),
         });

@@ -13,6 +13,13 @@ namespace Assistant.Contracts;
 public static class TaskActions
 {
     /// <summary>
+    /// The argument the schedule button carries on the wire, and the only one
+    /// <c>ScheduleAction</c> understands -- shared here so the button that sends it and the
+    /// action that accepts it can never drift apart.
+    /// </summary>
+    public const string PlusOneHour = "+1h";
+
+    /// <summary>
     /// The Done button's definition.
     /// </summary>
     public static TaskActionDefinition Done { get; } = new(

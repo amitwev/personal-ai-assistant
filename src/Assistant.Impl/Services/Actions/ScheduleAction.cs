@@ -9,24 +9,19 @@ namespace Assistant.Impl.Services.Actions;
 /// </summary>
 /// <param name="taskService">The single writer for tasks.</param>
 /// <param name="timeProvider">
-/// The current instant. <see cref="PlusOneHour"/> is added to this, never to the task's own
-/// <see cref="ReminderTask.DueAt"/> -- see <see cref="ExecuteAsync"/>.
+/// The current instant. <see cref="TaskActions.PlusOneHour"/> is added to this, never to the
+/// task's own <see cref="ReminderTask.DueAt"/> -- see <see cref="ExecuteAsync"/>.
 /// </param>
 internal sealed class ScheduleAction(ITaskService taskService, TimeProvider timeProvider) : ITaskAction
 {
-    /// <summary>
-    /// The only argument this action understands.
-    /// </summary>
-    internal const string PlusOneHour = "+1h";
-
     /// <inheritdoc/>
     public TaskActionDefinition Definition => TaskActions.Schedule;
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Only <see cref="PlusOneHour"/> is understood; any other <c>argument</c> -- a future preset
-    /// this slice does not yet implement, or a corrupted callback string -- is refused with
-    /// <see cref="ErrorCode.TaskActionArgumentUnrecognized"/> rather than guessed at.
+    /// Only <see cref="TaskActions.PlusOneHour"/> is understood; any other <c>argument</c> -- a
+    /// future preset this slice does not yet implement, or a corrupted callback string -- is
+    /// refused with <see cref="ErrorCode.TaskActionArgumentUnrecognized"/> rather than guessed at.
     /// <para>
     /// One hour is added to <see cref="TimeProvider"/>'s current instant, never to the task's own
     /// <see cref="ReminderTask.DueAt"/>: a reminder that has already fired carries a due time in
@@ -39,7 +34,7 @@ internal sealed class ScheduleAction(ITaskService taskService, TimeProvider time
     /// </para>
     /// </remarks>
     public Task<Result<ReminderTask>> ExecuteAsync(Guid taskId, string argument, CancellationToken ct) =>
-        argument == PlusOneHour
+        argument == TaskActions.PlusOneHour
             ? taskService.RescheduleAsync(taskId, timeProvider.GetUtcNow().AddHours(1), ct)
             : Task.FromResult(Result<ReminderTask>.Failure(ErrorCode.TaskActionArgumentUnrecognized));
 }
