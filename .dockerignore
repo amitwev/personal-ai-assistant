@@ -4,3 +4,8 @@
 .idea/
 .vs/
 .superpowers/
+
+# Secrets
+.env
+*.env
+!.env.example

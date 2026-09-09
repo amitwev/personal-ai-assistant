@@ -17,7 +17,7 @@ Self-hosted on a €5 VPS. Your data never leaves your machine.
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token
 2. Get your numeric user ID from [@userinfobot](https://t.me/userinfobot)
-3. `cp .env.example .env` and fill in the values
+3. `cp .env.example .env` and fill in the four required values: the bot token, your Telegram ID, an LLM API key, and a Postgres password
 4. `docker compose up -d`
 
 ## Deliberate limitations

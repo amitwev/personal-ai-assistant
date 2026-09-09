@@ -31,9 +31,13 @@ docker compose -f compose.test.yaml down -v     # when finished
 
 ### Run locally
 
-Container packaging for the worker (image build, secret delivery, restart policy) is not
-yet in this repository — there is no `compose.yaml` and no worker Dockerfile, only
-`compose.test.yaml`, which serves the test suite. To run locally: start a Postgres, then
+**In Docker (the normal path).** `cp .env.example .env`, fill in the four required values
+(the Telegram bot token, your Telegram chat ID, an LLM API key, and a Postgres password), then
+`docker compose up -d`. Watch it with `docker compose logs -f worker`. Stop it with
+`docker compose -f compose.yaml down` — do not add `-v`; that flag deletes the
+`assistant-postgres-data` volume and with it every stored task.
+
+**From source (contributors).** To run without Docker: start a Postgres, then
 
 ```bash
 DatabaseSettings__ConnectionString="Host=localhost;Port=<port>;Database=<db>;Username=<user>;Password=<password>" \
