@@ -436,19 +436,39 @@ Fires at 07:00 Jerusalem (configurable). Inserts today's Jerusalem local date in
 
 ### 6.4 Inline buttons
 
-Callback data format: `v1:<action>:<base64-id>[:<arg>]` — roughly 33 bytes against Telegram's 64-byte limit.
+Callback data format: `v1:<action>:<base64-id>[:<arg>]`. The base64 encoding of a 16-byte task id
+is always 24 characters, so the longest string this slice sends -- `v1:reschedule:<24 chars>:+1h` --
+is 42 bytes against Telegram's 64-byte limit.
 
-The `v1:` prefix means buttons left in chat history degrade gracefully when the format changes, rather than throwing. Actions are `ITaskAction` implementations resolved by key; an unrecognised key produces a polite message.
+The `v1:` prefix means buttons left in chat history degrade gracefully when the format changes,
+rather than throwing. A tap is resolved against two catalogues, tried in order: `ITaskAction`
+implementations, which act on the task and are resolved by key from the container; and
+`TaskNavigations` entries, which only swap which keyboard is attached and are read directly from
+the catalogue, carrying no behaviour of their own to register. An unrecognised key in either
+produces a polite message.
 
-| Button | Action | Effect |
+Main keyboard:
+
+| Button | Kind | Effect |
 | :--- | :--- | :--- |
 | `Done` | `DoneAction` | `CompleteAsync`; message edited to show it struck through, buttons removed |
-| `+1h` | `ScheduleAction` (arg `+1h`) | `RescheduleAsync` to one hour from now; clears `ReminderSentAt` so it fires again |
+| `Schedule` | `TaskNavigations.Schedule` | Attaches the schedule menu keyboard; the task itself is unchanged |
 
-As shipped at F11-3: two buttons, one action beyond `Done`. `+1h` stands alone rather than opening
-a menu -- F11-4 turns it into one. No action costs an LLM call; editing a task's title or notes
-through a follow-up message (`EditAction`) was dropped from an earlier design with no replacement
--- it is not scheduled anywhere in this backlog.
+Schedule menu:
+
+| Button | Kind | Effect |
+| :--- | :--- | :--- |
+| `+1h` | `ScheduleAction` (arg `+1h`) | `RescheduleAsync` to one hour from now; clears `ReminderSentAt` so it fires again; message re-renders with the main keyboard, closing the menu |
+| `Back` | `TaskNavigations.Back` | Attaches the main keyboard again; the task itself is unchanged |
+
+As shipped at F11-4a: the schedule menu exists, carrying only the one preset F11-3 already built.
+Applying a preset always returns the main keyboard, since the task just changed and a successful
+edit closes whatever menu the tap came from -- no explicit "close" action is needed for that case.
+`+3h`, `Tonight 20:00`, and `Tomorrow 09:00` join the menu at F11-4b, each read from a shared
+preset catalogue by both the keyboard and `ScheduleAction`; the two wall-clock presets need
+`ILocalTimeResolver`, which is F11-4b's, not F11-4a's. No action costs an LLM call; editing a
+task's title or notes through a follow-up message (`EditAction`) was dropped from an earlier
+design with no replacement -- it is not scheduled anywhere in this backlog.
 
 Three required behaviours:
 

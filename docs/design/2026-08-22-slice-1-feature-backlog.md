@@ -631,7 +631,7 @@ carrying the right buttons.
 ### Completing the product
 
 **F11 · Snooze and reschedule** — spec §6.4, §4.2
-`ScheduleAction` (`+1h`, joined at F11-4 by `+3h`, `Tonight 20:00`, `Tomorrow 09:00`, and `Back`).
+`ScheduleAction` (`+1h`, joined at F11-4b by `+3h`, `Tonight 20:00`, `Tomorrow 09:00`, and `Back`).
 Clears `ReminderSentAt` so the task fires again, including a task that had no `DueAt` at all --
 the pairing that makes `TaskService` the mandatory single writer. Does not reset `DeliveryAttempts`:
 that column returns at F13, not here.
@@ -645,6 +645,25 @@ marker is cleared; buttons remain attached.
   instant, not to the task's old due time and not via a local wall-clock reading.
 - **`DeliveryAttempts` deferred to F13.** Resetting delivery attempts on reschedule is a no-op
   until retry tracking exists.
+*Settled at F11-4a:*
+- **F11-4 splits into F11-4a and F11-4b**, keeping both pull requests under the 1000-line
+  budget. F11-4a is the architecture: `TaskNavigations`, `TaskKeyboard`, and the menu
+  swapping to `[+1h] [Back]`. F11-4b is the content: `+3h`, `Tonight 20:00`, and `Tomorrow 09:00`,
+  with `ILocalTimeResolver` threaded into `ScheduleAction`. F11 stays open until F11-4b lands.
+- **A navigation is data, not a registration seam.** `ITaskAction` earns its interface because an
+  action has behaviour and takes dependencies from the container -- `ScheduleAction` needs
+  `ITaskService` and `TimeProvider`. A navigation tap only swaps which keyboard is attached, the
+  same one line for every navigation that will ever exist, so `TaskNavigations` is one more
+  catalogue in `Assistant.Contracts` and `CallbackRouter` reads it directly; no `ITaskNavigation`
+  interface, no implementing classes, no DI registrations ever shipped.
+  `INotifier.ShowKeyboardAsync` edits the message to swap the keyboard while keeping message text
+  unchanged. The catalogue entries were also renamed so each one's property name, wire key, and
+  label agree: `TaskNavigations.OpenSchedule` became `TaskNavigations.Schedule` (key `menu` to
+  `schedule`), and `TaskActions.Schedule` became `TaskActions.Reschedule` (key `schedule` to
+  `reschedule`, label `+1h` to `Reschedule`) -- "Schedule" now names only the navigation that opens
+  the menu, and the action is named for the `RescheduleAsync` call it makes.
+- **Applying `+1h` closes the menu on its own**: a successful action re-renders via `UpdateTaskAsync`,
+  which attaches the main keyboard (`TaskKeyboard.Actions`).
 
 **F12 · Daily brief · observable** — spec §6.3
 `DailyBriefLog` + `daily_brief_log` (its primary key is the once-per-day check),

@@ -1,5 +1,4 @@
 using Assistant.Contracts;
-using Assistant.Impl.Services.Actions;
 using Assistant.Impl.Settings;
 using Assistant.Interfaces;
 using Telegram.Bot;
@@ -39,31 +38,49 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Builds both the <c>Done</c> and <c>+1h</c> buttons by hand, in one row, rather than by
-    /// iterating <c>TaskActions.All</c> -- a task message carries exactly these two, and a loop
-    /// is machinery for a plurality that does not exist. The
-    /// <see cref="InlineKeyboardMarkup(System.Collections.Generic.IEnumerable{InlineKeyboardButton})"/>
-    /// overload binds to the constructor that wraps its argument in one row, producing
-    /// <c>{"inline_keyboard":[[...]]}</c> on the wire -- exactly the single-row layout wanted
-    /// here. Each button's callback data is <c>CallbackCodec.Encode</c> applied to its key and
-    /// <paramref name="taskId"/> (with <c>+1h</c> also carrying <see cref="ScheduleAction.PlusOneHour"/>),
-    /// the same encoding <c>CallbackRouter</c> decodes on a tap. Labels are sent as-is:
-    /// <c>parse_mode</c> governs the message body, not a button's text, which Telegram carries as
-    /// a plain JSON string rather than parsed markup.
+    /// Attaches <see cref="TaskKeyboard.Actions"/>, built by <see cref="BuildKeyboard"/> the same
+    /// way every other keyboard this adapter sends is.
     /// </remarks>
     public async Task SendTaskAsync(Guid taskId, string text, CancellationToken ct) =>
         await bot.SendMessage(
             settings.OwnerChatId, Escape(text), ParseMode.Html,
-            replyMarkup: BuildTaskKeyboard(taskId), cancellationToken: ct);
+            replyMarkup: BuildKeyboard(taskId, TaskKeyboard.Actions), cancellationToken: ct);
 
-    private static InlineKeyboardMarkup BuildTaskKeyboard(Guid taskId) => new(
+    // Building three private methods rather than one -- BuildKeyboard dispatches by TaskKeyboard,
+    // BuildActionsKeyboard and BuildScheduleMenuKeyboard each build one row by hand -- is
+    // deliberate at this slice's size: both rows are fixed at exactly two buttons today (Done and
+    // Schedule; +1h and Back), so a loop over a catalogue would be machinery for a plurality
+    // that does not exist yet. Once a second preset joins the schedule menu, BuildScheduleMenuKeyboard
+    // is the one method that needs to change, to iterate its own preset catalogue instead.
+    private static InlineKeyboardMarkup BuildKeyboard(Guid taskId, TaskKeyboard keyboard) => keyboard switch
+    {
+        TaskKeyboard.Actions => BuildActionsKeyboard(taskId),
+        TaskKeyboard.ScheduleMenu => BuildScheduleMenuKeyboard(taskId),
+        _ => throw new ArgumentOutOfRangeException(nameof(keyboard), keyboard, "Unrecognised TaskKeyboard value."),
+    };
+
+    private static InlineKeyboardMarkup BuildActionsKeyboard(Guid taskId) => new(
         new[]
         {
             InlineKeyboardButton.WithCallbackData(
                 TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, taskId)),
             InlineKeyboardButton.WithCallbackData(
-                TaskActions.Schedule.Label,
-                CallbackCodec.Encode(TaskActions.Schedule.Key, taskId, ScheduleAction.PlusOneHour)),
+                TaskNavigations.Schedule.Label,
+                CallbackCodec.Encode(TaskNavigations.Schedule.Key, taskId)),
+        });
+
+    // The button's label and its wire argument are both TaskActions.PlusOneHour, not
+    // TaskActions.Reschedule.Label -- that catalogue entry's label reads "Reschedule" for a
+    // developer skimming the catalogue, but the button itself has always shown "+1h", and
+    // PlusOneHour is the const that names what a tap on it actually sends.
+    private static InlineKeyboardMarkup BuildScheduleMenuKeyboard(Guid taskId) => new(
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData(
+                TaskActions.PlusOneHour,
+                CallbackCodec.Encode(TaskActions.Reschedule.Key, taskId, TaskActions.PlusOneHour)),
+            InlineKeyboardButton.WithCallbackData(
+                TaskNavigations.Back.Label, CallbackCodec.Encode(TaskNavigations.Back.Key, taskId)),
         });
 
     /// <inheritdoc/>
@@ -87,7 +104,18 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
     public async Task UpdateTaskAsync(int messageId, Guid taskId, string text, CancellationToken ct) =>
         await bot.EditMessageText(
             settings.OwnerChatId, messageId, Escape(text), ParseMode.Html,
-            BuildTaskKeyboard(taskId), cancellationToken: ct);
+            BuildKeyboard(taskId, TaskKeyboard.Actions), cancellationToken: ct);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Builds whichever keyboard <paramref name="keyboard"/> names via the same
+    /// <see cref="BuildKeyboard"/> helper every other method on this class reaches through, so a
+    /// menu tap and a task edit can never disagree about what either keyboard actually contains.
+    /// </remarks>
+    public async Task ShowKeyboardAsync(int messageId, Guid taskId, string text, TaskKeyboard keyboard, CancellationToken ct) =>
+        await bot.EditMessageText(
+            settings.OwnerChatId, messageId, Escape(text), ParseMode.Html,
+            BuildKeyboard(taskId, keyboard), cancellationToken: ct);
 
     // "&" must be replaced first. Doing "<" or ">" first and "&" after would re-escape the
     // ampersand that replacement just introduced — "<" becomes "&lt;", then that "&" becomes

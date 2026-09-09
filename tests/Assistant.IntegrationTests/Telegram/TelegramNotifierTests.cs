@@ -174,12 +174,52 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
                 [
                     new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, taskId)),
                     new InlineButtonPayload(
-                        TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, taskId, "+1h")),
+                        TaskNavigations.Schedule.Label, CallbackCodec.Encode(TaskNavigations.Schedule.Key, taskId)),
                 ],
             ]));
 
         // Act
         await _sut.UpdateTaskAsync(messageId, taskId, text, CancellationToken.None);
+
+        // Assert
+        Assert.Equivalent(expected, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);
+    }
+
+    /// <summary>
+    /// When a task message's keyboard is switched to the schedule menu
+    /// And its title contains "&amp;", "&lt;" and "&gt;"
+    /// Then the edit escapes all three in order and attaches the +1h and Back buttons.
+    /// </summary>
+    /// <remarks>
+    /// The expected string was worked out by hand, the same discipline
+    /// <see cref="SendAsync_TextContainsAngleBracketsAndAmpersand_EscapesAllThreeInOrder"/> uses.
+    /// The reverse direction -- switching back to <see cref="TaskKeyboard.Actions"/> -- renders the
+    /// identical row <see cref="UpdateTaskAsync_TextContainsAngleBracketsAndAmpersand_EscapesAllThreeInOrder"/>
+    /// already pins, so it earns no second escaping test of its own here; a real tap through both
+    /// directions is <c>CallbackRouterTests</c>'s job.
+    /// </remarks>
+    [Fact]
+    public async Task ShowKeyboardAsync_SwitchedToScheduleMenu_EscapesTextAndAttachesThePresetAndBackButtons()
+    {
+        // Arrange
+        const int messageId = 42;
+        var taskId = Guid.NewGuid();
+        const string text = "Meet R&D <at 5> & confirm";
+        var expected = new EditMessageTextPayload(
+            OwnerChatId, messageId, "Meet R&amp;D &lt;at 5&gt; &amp; confirm", "Html",
+            new ReplyMarkupPayload(
+            [
+                [
+                    new InlineButtonPayload(
+                        TaskActions.PlusOneHour,
+                        CallbackCodec.Encode(TaskActions.Reschedule.Key, taskId, TaskActions.PlusOneHour)),
+                    new InlineButtonPayload(
+                        TaskNavigations.Back.Label, CallbackCodec.Encode(TaskNavigations.Back.Key, taskId)),
+                ],
+            ]));
+
+        // Act
+        await _sut.ShowKeyboardAsync(messageId, taskId, text, TaskKeyboard.ScheduleMenu, CancellationToken.None);
 
         // Assert
         Assert.Equivalent(expected, Assert.Single(await wireMock.EditedMessagesAsync()), strict: true);

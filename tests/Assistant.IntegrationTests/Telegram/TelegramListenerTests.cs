@@ -116,7 +116,7 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
         {
             new InlineButtonPayload(TaskActions.Done.Label, CallbackCodec.Encode(TaskActions.Done.Key, stored.Id)),
             new InlineButtonPayload(
-                TaskActions.Schedule.Label, CallbackCodec.Encode(TaskActions.Schedule.Key, stored.Id, "+1h")),
+                TaskNavigations.Schedule.Label, CallbackCodec.Encode(TaskNavigations.Schedule.Key, stored.Id)),
         };
         Assert.Equivalent(expectedRow, Assert.Single(sent[0].ReplyMarkup!.InlineKeyboard), strict: true);
     }
@@ -144,7 +144,7 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
         var row = Assert.Single(sent[0].ReplyMarkup!.InlineKeyboard);
         Assert.Equal(2, row.Count);
         Assert.Equal(TaskActions.Done.Label, row[0].Text);
-        Assert.Equal(TaskActions.Schedule.Label, row[1].Text);
+        Assert.Equal(TaskNavigations.Schedule.Label, row[1].Text);
     }
 
     /// <summary>

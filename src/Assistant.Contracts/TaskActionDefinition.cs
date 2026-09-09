@@ -10,7 +10,11 @@ namespace Assistant.Contracts;
 /// one would render a button that is undecodable forever once tapped.
 /// </param>
 /// <param name="Label">
-/// The text a human reads on the button itself.
+/// The text a human reads on the button itself, for every entry whose button text is fixed. The
+/// one exception today is <see cref="TaskActions.Reschedule"/>: because one action key serves
+/// every preset the schedule menu offers, its button text varies by the argument the preset
+/// carries, so this holds a developer-facing name instead, and the button's actual text is
+/// supplied by the caller that renders it.
 /// </param>
 /// <param name="Description">
 /// What the action does, written for a developer reading this catalogue.
