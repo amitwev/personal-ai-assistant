@@ -5,8 +5,11 @@ services:
       POSTGRES_DB: assistant_test
       POSTGRES_USER: assistant
       POSTGRES_PASSWORD: assistant
+    # Host port (and wiremock's below) stays under 32768, outside Linux's default ephemeral range
+    # of 32768-60999 -- a port inside that range can be claimed by an outbound connection on a
+    # CI runner microseconds before Docker binds it, failing bring-up with "address already in use".
     ports:
-      - "55432:5432"
+      - "15432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U assistant -d assistant_test"]
       interval: 2s
@@ -18,7 +21,7 @@ services:
       context: .
       dockerfile: tests/Assistant.WireMock/Dockerfile
     ports:
-      - "58080:8080"
+      - "18080:8080"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/__admin/mappings || exit 1"]
       interval: 2s

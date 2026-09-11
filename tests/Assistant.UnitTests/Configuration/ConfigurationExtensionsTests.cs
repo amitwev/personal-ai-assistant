@@ -68,13 +68,13 @@ public sealed class ConfigurationExtensionsTests
         {
             BotToken = BotToken,
             OwnerChatId = 100200300L,
-            BaseUrl = "http://localhost:58080",
+            BaseUrl = "http://localhost:18080",
         };
         var configuration = BuildConfiguration(new Dictionary<string, string?>
         {
             ["TelegramSettings:BotToken"] = BotToken,
             ["TelegramSettings:OwnerChatId"] = OwnerChatId,
-            ["TelegramSettings:BaseUrl"] = "http://localhost:58080",
+            ["TelegramSettings:BaseUrl"] = "http://localhost:18080",
         });
 
         // Act

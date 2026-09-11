@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: assistant
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set -- copy .env.example to .env and fill it in}
     # No host port published on purpose: the worker reaches postgres over the compose network,
-    # and on a public VPS a mapped 5432 is an open door. compose.test.yaml maps 55432 because
+    # and on a public VPS a mapped 5432 is an open door. compose.test.yaml maps 15432 because
     # the test suite runs outside the containers; nothing here does.
     volumes:
       - assistant-postgres-data:/var/lib/postgresql/data
