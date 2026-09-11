@@ -1,5 +1,6 @@
 using Assistant.Contracts;
 using Assistant.Impl;
+using Assistant.Impl.Mapping;
 using Assistant.Impl.Settings;
 using Assistant.Impl.Telegram;
 using Assistant.IntegrationTests.Infrastructure;
@@ -26,19 +27,30 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
 
     private IScheduledJob _sut = null!;
 
+    private ITaskService _taskService = null!;
+
+    private INotifier _notifier = null!;
+
+    private ILocalTimeResolver _clock = null!;
+
     /// <inheritdoc/>
     public async Task InitializeAsync()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddAssistantRepository(postgres.ConnectionString);
         services.AddAssistantServices();
         services.AddAssistantTelegram(new TelegramSettings
         {
             BotToken = BotToken, OwnerChatId = OwnerChatId, BaseUrl = wireMock.Url,
         });
+        services.AddAssistantTime(new TimeSettings { IanaTimeZone = "Asia/Jerusalem" });
         services.AddAssistantScheduler();
         _provider = services.BuildServiceProvider();
         _sut = _provider.GetRequiredService<IScheduledJob>();
+        _taskService = _provider.GetRequiredService<ITaskService>();
+        _notifier = _provider.GetRequiredService<INotifier>();
+        _clock = _provider.GetRequiredService<ILocalTimeResolver>();
 
         await postgres.ResetAsync();
         await wireMock.ResetAsync();
@@ -50,10 +62,10 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
     /// <summary>
     /// When a task is due
     /// And the job runs
-    /// Then exactly one message is sent, carrying the task's title.
+    /// Then exactly one message is sent, carrying its rendered due-time text.
     /// </summary>
     [Fact]
-    public async Task RunAsync_TaskIsDue_SendsItsTitle()
+    public async Task RunAsync_TaskIsDue_SendsItsRenderedDueTimeText()
     {
         // Arrange
         var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
@@ -64,7 +76,7 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
 
         // Assert
         var sent = Assert.Single(await wireMock.SentMessagesAsync());
-        Assert.Equal(task.Title, sent.Text);
+        Assert.Equal(task.ToMessageText(_clock), sent.Text);
     }
 
     /// <summary>
@@ -142,12 +154,14 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
     {
         // Arrange
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddAssistantRepository(postgres.ConnectionString);
         services.AddAssistantServices();
         services.AddAssistantTelegram(new TelegramSettings
         {
             BotToken = BotToken, OwnerChatId = OwnerChatId, BaseUrl = UnreachableBaseUrl,
         });
+        services.AddAssistantTime(new TimeSettings { IanaTimeZone = "Asia/Jerusalem" });
         services.AddAssistantScheduler();
         await using var provider = services.BuildServiceProvider();
         var sut = provider.GetRequiredService<IScheduledJob>();

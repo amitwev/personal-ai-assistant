@@ -1,7 +1,9 @@
 using Assistant.Contracts;
 using Assistant.Impl.Settings;
 using Assistant.Interfaces;
+using Microsoft.Extensions.Logging;
 using Telegram.Bot;
+using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 
@@ -12,6 +14,9 @@ namespace Assistant.Impl.Telegram;
 /// </summary>
 /// <param name="bot">The Telegram client, already pointed at a base address.</param>
 /// <param name="settings">Validated Telegram configuration.</param>
+/// <param name="logger">
+/// Where a failed best-effort delete of a task's previous announcing message is recorded.
+/// </param>
 /// <remarks>
 /// HTML parse mode is deliberate. MarkdownV2 has eighteen escape-sensitive characters, so an
 /// underscore in a task title would produce a 400 on a live reminder — a formatting defect that
@@ -24,7 +29,8 @@ namespace Assistant.Impl.Telegram;
 /// distinction then, with a test that demands it.
 /// </para>
 /// </remarks>
-internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings settings) : INotifier
+internal sealed class TelegramNotifier(
+    ITelegramBotClient bot, TelegramSettings settings, ILogger<TelegramNotifier> logger) : INotifier
 {
     // new InlineKeyboardMarkup([]) is the wrong empty keyboard: an empty array of buttons binds
     // to the constructor overload that wraps it in one row, producing {"inline_keyboard":[[]]}
@@ -39,12 +45,33 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
     /// <inheritdoc/>
     /// <remarks>
     /// Attaches <see cref="TaskKeyboard.Actions"/>, built by <see cref="BuildKeyboard"/> the same
-    /// way every other keyboard this adapter sends is.
+    /// way every other keyboard this adapter sends is. The send runs first so a delete failure
+    /// can never cost the owner a reminder; the delete that follows is therefore best-effort,
+    /// logged at warning and never surfaced.
     /// </remarks>
-    public async Task SendTaskAsync(Guid taskId, string text, CancellationToken ct) =>
-        await bot.SendMessage(
+    public async Task<int> AnnounceTaskAsync(
+        int? previousMessageId, Guid taskId, string text, CancellationToken ct)
+    {
+        var message = await bot.SendMessage(
             settings.OwnerChatId, Escape(text), ParseMode.Html,
             replyMarkup: BuildKeyboard(taskId, TaskKeyboard.Actions), cancellationToken: ct);
+
+        if (previousMessageId is { } previous)
+        {
+            try
+            {
+                await bot.DeleteMessage(settings.OwnerChatId, previous, ct);
+            }
+            catch (RequestException)
+            {
+                logger.LogWarning(
+                    "Could not delete the previous message {MessageId} announcing task {TaskId}.",
+                    previous, taskId);
+            }
+        }
+
+        return message.Id;
+    }
 
     // Building three private methods rather than one -- BuildKeyboard dispatches by TaskKeyboard,
     // BuildActionsKeyboard and BuildScheduleMenuKeyboard each build one row by hand -- is
@@ -97,7 +124,7 @@ internal sealed class TelegramNotifier(ITelegramBotClient bot, TelegramSettings 
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Re-attaches the same two-button keyboard <see cref="SendTaskAsync"/> would build fresh for
+    /// Re-attaches the same two-button keyboard <see cref="AnnounceTaskAsync"/> would build fresh for
     /// <paramref name="taskId"/> -- the task this message announces is not finished, so whatever
     /// it could already accept a tap on, it must still accept a tap on.
     /// </remarks>

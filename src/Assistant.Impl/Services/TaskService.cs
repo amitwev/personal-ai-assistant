@@ -103,5 +103,22 @@ internal sealed class TaskService(ITaskRepository repository, TimeProvider timeP
 
         return Result<ReminderTask>.Success(task);
     }
+
+    /// <inheritdoc/>
+    public async Task<Result> RecordMessageAsync(Guid id, int messageId, CancellationToken ct)
+    {
+        var task = await repository.FindAsync(id, ct);
+
+        if (task is null)
+        {
+            return Result.Failure(ErrorCode.TaskNotFound);
+        }
+
+        task.MessageId = messageId;
+        task.UpdatedAt = timeProvider.GetUtcNow();
+        await repository.UpdateAsync(task, ct);
+
+        return Result.Success();
+    }
 }
 

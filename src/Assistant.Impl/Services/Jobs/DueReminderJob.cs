@@ -1,3 +1,4 @@
+using Assistant.Impl.Mapping;
 using Assistant.Impl.Scheduling;
 using Assistant.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,11 +13,13 @@ namespace Assistant.Impl.Services.Jobs;
 /// and the service depends on the scoped database context.
 /// </param>
 /// <param name="notifier">Where a due reminder's message is delivered.</param>
+/// <param name="clock">Renders a stored due instant back in the configured local zone.</param>
 /// <remarks>
 /// Registered as a singleton so the re-entrancy guard on <see cref="ScheduledJobBase"/> refers to
 /// a stable instance across ticks.
 /// </remarks>
-internal sealed class DueReminderJob(IServiceScopeFactory scopeFactory, INotifier notifier)
+internal sealed class DueReminderJob(
+    IServiceScopeFactory scopeFactory, INotifier notifier, ILocalTimeResolver clock)
     : ScheduledJobBase
 {
     private const int BatchSize = 50;
@@ -30,7 +33,10 @@ internal sealed class DueReminderJob(IServiceScopeFactory scopeFactory, INotifie
 
         foreach (var task in tasks)
         {
-            await notifier.SendTaskAsync(task.Id, task.Title, ct);
+            var messageId = await notifier.AnnounceTaskAsync(
+                task.MessageId, task.Id, task.ToMessageText(clock), ct);
+
+            await taskService.RecordMessageAsync(task.Id, messageId, ct);
             await taskService.MarkReminderSentAsync(task.Id, ct);
         }
     }
