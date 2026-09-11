@@ -31,6 +31,7 @@ internal sealed class ReminderTaskConfiguration : IEntityTypeConfiguration<Remin
         builder.Property(x => x.Title).HasColumnName("title").IsRequired().HasMaxLength(500);
         builder.Property(x => x.Status).HasColumnName("status").HasConversion<int>();
         builder.Property(x => x.DueAt).HasColumnName("due_at").HasColumnType("timestamptz");
+        builder.Property(x => x.MessageId).HasColumnName("message_id");
         builder.Property(x => x.ReminderSentAt)
             .HasColumnName("reminder_sent_at")
             .HasColumnType("timestamptz");
