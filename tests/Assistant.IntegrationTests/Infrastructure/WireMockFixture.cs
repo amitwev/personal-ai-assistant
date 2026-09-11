@@ -27,6 +27,12 @@ public sealed class WireMockFixture : IAsyncLifetime
     private static readonly Guid AiMapping =
         new("f9a00000-0000-0000-0000-000000000001");
 
+    private static readonly Guid SendMessageOverrideMapping =
+        new("f7000000-0000-0000-0000-000000000003");
+
+    private static readonly Guid DeleteMessageFailureMapping =
+        new("f7000000-0000-0000-0000-000000000004");
+
     private readonly HttpClient _http = new();
 
     /// <summary>
@@ -79,7 +85,11 @@ public sealed class WireMockFixture : IAsyncLifetime
     /// <returns>A task that completes once the request log is empty and any seeded mapping is gone.</returns>
     public async Task ResetAsync()
     {
-        foreach (var id in new[] { PendingUpdatesMapping, DrainedUpdatesMapping, AiMapping })
+        foreach (var id in new[]
+        {
+            PendingUpdatesMapping, DrainedUpdatesMapping, AiMapping,
+            SendMessageOverrideMapping, DeleteMessageFailureMapping,
+        })
         {
             (await _http.DeleteAsync($"{Url}/__admin/mappings/{id}")).Dispose();
         }
@@ -224,6 +234,60 @@ public sealed class WireMockFixture : IAsyncLifetime
         PutMappingAsync(AiMapping, "/chat/completions", priority: 1,
             bodyPattern: null, statusCode: 200,
             responseBody: new JsonObject { ["choices"] = new JsonArray() },
+            delayMs: null);
+
+    /// <summary>
+    /// Makes the stub answer the next sendMessage request with the given message id, in place of
+    /// the constant 1 that <c>TelegramStubs</c>'s own base mapping always returns.
+    /// </summary>
+    /// <param name="messageId">The id to answer with.</param>
+    /// <returns>A task that completes once the override mapping is installed.</returns>
+    /// <remarks>
+    /// Installed at priority -1, confirmed directly against the running stub to beat
+    /// <c>TelegramStubs</c>'s own unprioritised <c>/bot*/sendMessage</c> mapping, which behaves as
+    /// priority 0: a mapping installed at priority 1 for the same path lost to it, and priority -1
+    /// won. Uses its own guid, distinct from every other seeded mapping, so a test can call this
+    /// twice -- once before a capture, again before a fire -- to make the two sends
+    /// distinguishable by id, which is the whole point: <c>TelegramStubs</c>'s own constant would
+    /// make both sends indistinguishable and any delete-id assertion trivially true.
+    /// </remarks>
+    public Task SeedNextMessageIdAsync(int messageId) =>
+        PutMappingAsync(SendMessageOverrideMapping, "/bot*/sendMessage", priority: -1,
+            bodyPattern: null, statusCode: 200,
+            responseBody: new JsonObject
+            {
+                ["ok"] = true,
+                ["result"] = new JsonObject
+                {
+                    ["message_id"] = messageId,
+                    ["date"] = 1756000000L,
+                    ["chat"] = new JsonObject { ["id"] = 1, ["type"] = "private" },
+                    ["text"] = "stubbed",
+                },
+            },
+            delayMs: null);
+
+    /// <summary>
+    /// Makes the next deleteMessage request fail the way a real too-old-to-delete message would.
+    /// </summary>
+    /// <returns>A task that completes once the failure mapping is installed.</returns>
+    /// <remarks>
+    /// Installed at priority -1 for the same reason <see cref="SeedNextMessageIdAsync"/> is. The
+    /// status code and body were confirmed directly against a standalone <c>Telegram.Bot</c>
+    /// client pointed at this stub: HTTP 400 with <c>{"ok":false,...}</c> is what makes the client
+    /// throw <c>Telegram.Bot.Exceptions.ApiRequestException</c>, which derives from
+    /// <c>RequestException</c> -- the type <c>TelegramNotifier.AnnounceTaskAsync</c> catches
+    /// around its own best-effort delete.
+    /// </remarks>
+    public Task SeedDeleteMessageFailureAsync() =>
+        PutMappingAsync(DeleteMessageFailureMapping, "/bot*/deleteMessage", priority: -1,
+            bodyPattern: null, statusCode: 400,
+            responseBody: new JsonObject
+            {
+                ["ok"] = false,
+                ["error_code"] = 400,
+                ["description"] = "Bad Request: message to delete not found",
+            },
             delayMs: null);
 
     /// <summary>

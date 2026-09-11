@@ -32,6 +32,17 @@ public sealed class ReminderTask
     public DateTimeOffset? DueAt { get; set; }
 
     /// <summary>
+    /// Identifier of the message currently announcing this task to the owner.
+    /// </summary>
+    /// <value>
+    /// <see langword="null"/> when no message announces this task yet -- true both before its
+    /// first announcement and, permanently, for every row that existed before this property was
+    /// added. Set by <c>ITaskService.RecordMessageAsync</c> once
+    /// <c>INotifier.AnnounceTaskAsync</c> returns the identifier of the message it just sent.
+    /// </value>
+    public int? MessageId { get; set; }
+
+    /// <summary>
     /// When the reminder for the current <see cref="DueAt"/> was delivered, in UTC.
     /// </summary>
     /// <value>

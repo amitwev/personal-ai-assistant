@@ -21,6 +21,7 @@ internal sealed class EfTaskRepository(AssistantDbContext db) : ITaskRepository
     {
         db.ReminderTasks.Add(task);
         await db.SaveChangesAsync(ct);
+        db.ChangeTracker.Clear();
     }
 
     /// <inheritdoc/>
@@ -44,7 +45,14 @@ internal sealed class EfTaskRepository(AssistantDbContext db) : ITaskRepository
     /// <inheritdoc/>
     public async Task UpdateAsync(ReminderTask task, CancellationToken ct)
     {
+        var tracked = db.ChangeTracker.Entries<ReminderTask>().FirstOrDefault(e => e.Entity.Id == task.Id);
+        if (tracked is not null)
+        {
+            tracked.State = EntityState.Detached;
+        }
+
         db.ReminderTasks.Update(task);
         await db.SaveChangesAsync(ct);
+        db.ChangeTracker.Clear();
     }
 }

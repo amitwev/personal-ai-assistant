@@ -253,6 +253,7 @@ CREATE TABLE reminder_tasks (
     priority           INT NOT NULL DEFAULT 1,   -- 1 Normal, 2 High
     due_at             TIMESTAMPTZ,              -- UTC; also the reminder time
     reminder_sent_at   TIMESTAMPTZ,              -- NULL = delivery still owed
+    message_id         INT,                      -- id of the message currently announcing this task; NULL = not yet announced
     delivery_attempts  INT NOT NULL DEFAULT 0,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -288,6 +289,7 @@ Three points worth stating explicitly:
 
 - **`due_at` doubles as the reminder time.** One field. Splitting it is additive later.
 - **`reminder_sent_at` is the idempotency key.** The scheduler selects only rows where it is NULL, which makes restart catch-up and duplicate suppression the same mechanism.
+- **`message_id` is how one task keeps one live message.** Every announcement — a capture reply or a fired reminder — reads and replaces it, so the chat never shows two live messages for the same task. NULL for a task that predates this column, or one never yet announced.
 - **`daily_brief_log.brief_date` as primary key** makes the insert itself the once-per-day check. No race condition is possible.
 
 `chat_messages` exists only so follow-ups resolve ("actually make it 11"). The most recent 20 rows are loaded per request. Slice 1 has no pruning job — at single-user volume the table stays small and old rows are never read.
@@ -427,6 +429,8 @@ LIMIT @limit;
 There is deliberately no lower bound on `due_at` — that is what makes restart catch-up automatic. Because a long outage would otherwise produce a burst of individual messages, anything overdue by more than 24 hours is collapsed into a single summary message. **Deferred:** not built at F5b, which sends one message per overdue task no matter how overdue it is. §7.4's "overdue by 3 days across 5 tasks → one summary message, not five" scenario belongs to this collapse and is therefore deferred with it; F5b's third job test deliberately arranges one overdue task, not five, so it asserts nothing that the deferred behaviour would later contradict.
 
 **Delivery ordering: send, then mark.** The reverse (mark, then send) loses a reminder when the send fails after the write. At-least-once is the correct trade for this product. `delivery_attempts` caps retries at 3 so a persistent failure cannot loop indefinitely. **Deferred:** there is no `delivery_attempts` column yet and no retry cap — a persistent failure today retries forever, once per tick, rather than giving up after three.
+
+**Settled fixing issue #39:** delivery now *replaces* the task's live message rather than adding a second one. `DueReminderJob` reads the task's own `message_id`, passes it to the notifier as the message to replace, and records whatever new id comes back before marking the reminder sent — the same order the send-then-mark rule above already argues for, applied one write earlier. This is §6.4's "edit the original message in place, so the chat stays clean" rule, finally holding for a fired reminder and not only for a button tap.
 
 ### 6.3 `DailyBriefJob`
 

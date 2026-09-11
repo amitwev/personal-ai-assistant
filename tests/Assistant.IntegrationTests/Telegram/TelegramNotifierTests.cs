@@ -26,6 +26,7 @@ public sealed class TelegramNotifierTests(WireMockFixture wireMock) : IAsyncLife
     public Task InitializeAsync()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddAssistantTelegram(new TelegramSettings
         {
             BotToken = BotToken,

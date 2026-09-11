@@ -25,6 +25,7 @@ namespace Assistant.Impl.Telegram;
 /// bot client.
 /// </param>
 /// <param name="notifier">Where the reply is delivered.</param>
+/// <param name="taskService">Records which message now announces a captured task.</param>
 /// <param name="ai">Reaches the configured chat model for an answer.</param>
 /// <param name="tools">Every registered tool, matched against the model's tool call by name.</param>
 /// <param name="clock">Renders a stored due instant back in the configured local zone.</param>
@@ -62,6 +63,7 @@ internal sealed class MessageHandler(
     TelegramSettings settings,
     ITelegramBotClient bot,
     INotifier notifier,
+    ITaskService taskService,
     IAiClient ai,
     IEnumerable<IAssistantTool> tools,
     ILocalTimeResolver clock,
@@ -147,7 +149,10 @@ internal sealed class MessageHandler(
         }
 
         var task = outcome.Value!;
-        await notifier.SendTaskAsync(task.Id, task.ToMessageText(clock), ct);
+        var announcedMessageId = await notifier.AnnounceTaskAsync(
+            task.MessageId, task.Id, task.ToMessageText(clock), ct);
+
+        await taskService.RecordMessageAsync(task.Id, announcedMessageId, ct);
 
         try
         {

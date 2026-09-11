@@ -100,5 +100,21 @@ public interface ITaskService
     /// <see cref="CompleteAsync"/> uses for a second completion.
     /// </remarks>
     Task<Result<ReminderTask>> RescheduleAsync(Guid id, DateTimeOffset dueAtUtc, CancellationToken ct);
+
+    /// <summary>
+    /// Records which message currently announces a task to the owner.
+    /// </summary>
+    /// <param name="id">The task the message announces.</param>
+    /// <param name="messageId">The identifier of the message that now announces it.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Success, or the reason it was refused: no task carries the identifier.</returns>
+    /// <remarks>
+    /// Called after <see cref="ReminderTask.MessageId"/>'s new value comes back from
+    /// <c>INotifier.AnnounceTaskAsync</c>, both on a task's first capture and on every later
+    /// re-announcement. Overwrites whatever identifier was previously recorded without reading it
+    /// first: the caller already holds the previous value, having passed it into
+    /// <c>AnnounceTaskAsync</c> as its own <paramref name="messageId"/> one line earlier.
+    /// </remarks>
+    Task<Result> RecordMessageAsync(Guid id, int messageId, CancellationToken ct);
 }
 

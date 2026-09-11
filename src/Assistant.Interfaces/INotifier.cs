@@ -29,10 +29,17 @@ public interface INotifier
     Task SendAsync(string text, CancellationToken ct);
 
     /// <summary>
-    /// Sends a message announcing a task, with the actions its channel can offer attached as
-    /// buttons. The caller supplies no action list; which actions appear is the adapter's own
-    /// decision.
+    /// Announces a task to the owner, with the actions its channel can offer attached as buttons,
+    /// replacing whichever message is currently announcing the same task.
     /// </summary>
+    /// <param name="previousMessageId">
+    /// The message currently announcing this task, or <see langword="null"/> when none does --
+    /// true both before this task's first announcement and, permanently, for a task stored before
+    /// this method existed. Whether and how a previous message is actually replaced is the
+    /// adapter's own decision, not the caller's: a channel with no delete affordance is free to
+    /// implement this as a plain send, ignoring this argument beyond returning a value the next
+    /// call can pass back in.
+    /// </param>
     /// <param name="taskId">
     /// The task the message announces. The adapter needs this to build a channel-neutral handle
     /// for each action it attaches -- it never sees any other part of a database shape.
@@ -42,12 +49,19 @@ public interface INotifier
     /// before sending, so callers must not pre-escape.
     /// </param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>A task that completes once the message has been accepted for delivery.</returns>
+    /// <returns>
+    /// The identifier of the message this call created -- the caller's only source for a value to
+    /// pass as <paramref name="previousMessageId"/> the next time this task is announced.
+    /// </returns>
     /// <remarks>
-    /// There is no overload that accepts a subset of actions, because no caller needs one -- the
-    /// first caller that needs a subset is the trigger for adding it.
+    /// Replaces the former <c>SendTaskAsync</c>: every caller that used to send a task's first
+    /// announcement now also owns the identifier of whichever message is currently announcing it,
+    /// and passes that back in on every later announcement -- one task, one live message, its
+    /// identifier stored on the task. There is no overload that accepts a subset of actions,
+    /// because no caller needs one -- the first caller that needs a subset is the trigger for
+    /// adding it.
     /// </remarks>
-    Task SendTaskAsync(Guid taskId, string text, CancellationToken ct);
+    Task<int> AnnounceTaskAsync(int? previousMessageId, Guid taskId, string text, CancellationToken ct);
 
     /// <summary>
     /// Updates a previously sent message to reflect that the task it announced is now complete.
@@ -85,7 +99,7 @@ public interface INotifier
     /// Distinct from <see cref="MarkCompletedTaskAsync"/>, which clears the keyboard: the task
     /// this message announces is not finished, only some other field of it changed, so the same
     /// actions it could already accept must remain tappable. The keyboard this attaches is built
-    /// the same way <see cref="SendTaskAsync"/>'s own is -- from <paramref name="taskId"/> alone,
+    /// the same way <see cref="AnnounceTaskAsync"/>'s own is -- from <paramref name="taskId"/> alone,
     /// never from a caller-supplied keyboard -- so both methods stay in agreement as new actions
     /// are added.
     /// </remarks>

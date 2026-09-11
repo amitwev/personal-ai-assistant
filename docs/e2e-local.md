@@ -161,15 +161,19 @@ curl -s http://localhost:58080/__admin/requests \
   | python3 -c "import json,sys; [print(e['Request']['Body']) for e in json.load(sys.stdin) if e['Request']['Path'].endswith('/sendMessage')]"
 ```
 
-You should see the request body printed on its own:
+You should see the request body printed on its own, `text` now carrying the rendered due-time
+line rather than the bare title:
 
 ```
-{"chat_id":<your-chat-id>,"text":"Call the bank","parse_mode":"Html"}
+{"chat_id":<your-chat-id>,"text":"Call the bank -- due <weekday> <day> <month> <year>, <HH:mm>.","parse_mode":"Html"}
 ```
 
-Note that `text` is the bare task title, with no prefix — that is the behaviour conventions
-§12.6 settled: the message arrives from the assistant, in a chat only the assistant writes to,
-so there is nothing for a prefix to disambiguate.
+The exact due time depends on when you run this step, since the seeded row's `due_at` is always
+"one hour ago" relative to the moment you insert it. `text` reads `{title} -- due {local time}.`
+— the same rendering every task message uses, since issue #39's fix. There is still no added
+prefix such as "Reminder:" — that is the behaviour conventions §12.6 settled: the message arrives
+from the assistant, in a chat only the assistant writes to, so there is nothing for a prefix to
+disambiguate.
 
 ### 6. Check the row in the database
 
