@@ -80,6 +80,105 @@ public sealed class DueReminderJobTests(PostgresFixture postgres, WireMockFixtur
     }
 
     /// <summary>
+    /// When a task was announced before its reminder fires
+    /// And the reminder fires
+    /// Then the chat holds one live message, not two.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_TaskWasAnnouncedBeforeItFires_DeletesThePreviousMessage()
+    {
+        // Arrange
+        var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
+        await postgres.SaveAsync(task);
+        await wireMock.SeedNextMessageIdAsync(100);
+        var announcedMessageId = await _notifier.AnnounceTaskAsync(
+            task.MessageId, task.Id, task.ToMessageText(_clock), CancellationToken.None);
+        await _taskService.RecordMessageAsync(task.Id, announcedMessageId, CancellationToken.None);
+        await wireMock.SeedNextMessageIdAsync(200);
+
+        // Act
+        await _sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(2, (await wireMock.SentMessagesAsync()).Count);
+        var deleted = Assert.Single(await wireMock.DeletedMessagesAsync());
+        Assert.Equal(100, deleted.MessageId);
+    }
+
+    /// <summary>
+    /// When a task was announced before its reminder fires
+    /// And the reminder fires
+    /// Then the fired message shows the same due-time text the announcement showed.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_TaskWasAnnouncedBeforeItFires_RendersTheSameTextAsTheAnnouncement()
+    {
+        // Arrange
+        var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
+        await postgres.SaveAsync(task);
+        await wireMock.SeedNextMessageIdAsync(100);
+        var announcedMessageId = await _notifier.AnnounceTaskAsync(
+            task.MessageId, task.Id, task.ToMessageText(_clock), CancellationToken.None);
+        await _taskService.RecordMessageAsync(task.Id, announcedMessageId, CancellationToken.None);
+        await wireMock.SeedNextMessageIdAsync(200);
+
+        // Act
+        await _sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        var sent = await wireMock.SentMessagesAsync();
+        Assert.Equal(2, sent.Count);
+        Assert.Equal(task.ToMessageText(_clock), sent[0].Text);
+        Assert.Equal(sent[0].Text, sent[1].Text);
+    }
+
+    /// <summary>
+    /// When a task stored before this change fires
+    /// And it carries no MessageId
+    /// Then it is announced
+    /// And nothing is deleted.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_TaskHasNoStoredMessageId_AnnouncesItAndDeletesNothing()
+    {
+        // Arrange
+        var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
+        await postgres.SaveAsync(task);
+
+        // Act
+        await _sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Single(await wireMock.SentMessagesAsync());
+        Assert.Empty(await wireMock.DeletedMessagesAsync());
+    }
+
+    /// <summary>
+    /// When a task was announced before its reminder fires
+    /// And its previous message cannot be deleted
+    /// Then the reminder still arrives.
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_ThePreviousMessageCannotBeDeleted_TheReminderStillArrives()
+    {
+        // Arrange
+        var task = BuildReminderTask(dueAt: DateTimeOffset.UtcNow.AddHours(-1));
+        await postgres.SaveAsync(task);
+        await wireMock.SeedNextMessageIdAsync(100);
+        var announcedMessageId = await _notifier.AnnounceTaskAsync(
+            task.MessageId, task.Id, task.ToMessageText(_clock), CancellationToken.None);
+        await _taskService.RecordMessageAsync(task.Id, announcedMessageId, CancellationToken.None);
+        await wireMock.SeedNextMessageIdAsync(200);
+        await wireMock.SeedDeleteMessageFailureAsync();
+
+        // Act
+        await _sut.RunAsync(CancellationToken.None);
+
+        // Assert
+        Assert.Equal(2, (await wireMock.SentMessagesAsync()).Count);
+    }
+
+    /// <summary>
     /// When a pending task's due time has arrived
     /// And the job runs
     /// Then the message carries an inline keyboard with the Done and Schedule buttons for that task.
