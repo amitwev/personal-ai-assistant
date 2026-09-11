@@ -16,7 +16,6 @@ namespace Assistant.Impl.Telegram;
 /// startup to compute <c>allowedUpdates</c>. Handlers are registered scoped, not singleton, so
 /// they can constructor-inject scoped dependencies directly -- <c>CallbackRouter</c>
 /// resolves <c>ITaskAction</c> implementations that ultimately reach the scoped database context.
-/// See the "Each handler opens its own scope" entry in docs/tech-debt.md.
 /// </param>
 /// <param name="timeProvider">Supplies the delay applied after a failed poll.</param>
 /// <param name="logger">Where a failure is recorded.</param>

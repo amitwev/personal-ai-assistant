@@ -1,9 +1,8 @@
 # Conventions
 
-Extracted from [`docs/design/slice-1-reminders.md`](./design/slice-1-reminders.md).
-If this document and the spec ever disagree, the spec is authoritative.
+This document is the authoritative statement of these conventions.
 
-## Reference rules (spec §3.2)
+## Reference rules
 
 ```
 Models      →  (nothing)
@@ -114,7 +113,7 @@ public static class ReminderTaskMappingExtensions
 }
 ```
 
-Naming is by destination: `ToResponse()`, `ToModel()`, `ToRequest()`, `ToNotification()`. No mapping library — explicit methods fail visibly when a property is added, and the round-trip tests in §7.2 cover the case where one is forgotten.
+Naming is by destination: `ToResponse()`, `ToModel()`, `ToRequest()`, `ToNotification()`. No mapping library — explicit methods fail visibly when a property is added, and the mapper round-trip tests cover the case where one is forgotten.
 
 ### 12.3 Refit for HTTP clients
 
@@ -149,10 +148,9 @@ It contains, and nothing more than:
 
 1. **What this is**, in three sentences.
 2. **Every command, copy-pasteable and verified to work**: restore, build, unit tests, bring up `compose.test.yaml`, integration tests, run locally, apply migrations, run the prompt evals. Each with what it requires — Docker running, `.env` populated.
-3. **Project map** — the six projects, one line each, and the reference rules from §3.2 with a pointer to the architecture tests that enforce them.
+3. **Project map** — the six projects, one line each, and the reference rules defined earlier in this document with a pointer to the architecture tests that enforce them.
 4. **The conventions from this section**, or a pointer to `docs/conventions.md`.
-5. **What not to do** — do not add a project reference from `Impl` to `Repository` (§3.2), do not put behaviour on models (§4.1), do not mutate a task outside `TaskService` (§4.2), do not write a unit test for something an integration test covers (§7.2), do not use `HttpClient` directly (§12.3).
-6. **Where the design lives** — `docs/design/`, and the instruction to read the relevant spec before making a structural change.
+5. **What not to do** — do not add a project reference from `Impl` to `Repository`, do not put behaviour on models, do not mutate a task outside `TaskService`, do not write a unit test for something an integration test covers, do not use `HttpClient` directly (§12.3).
 
 **It must stay honest.** A stale `AGENTS.md` actively misleads, whereas a missing one merely slows people down. Every command in it is one CI already runs, so drift shows up as a failing build rather than as a contributor's wasted afternoon.
 
@@ -204,15 +202,15 @@ that only the assistant will ever read.
 
 The case against them is concrete, not aesthetic. Emoji render at inconsistent widths across
 fonts and terminals, and this project's documents are full of ASCII diagrams and reference
-tables — §3.2, the directory tree in §11.1 — whose alignment depends on every character being
-one column wide; a pictogram silently breaks that for whoever's renderer disagrees with the
-author's. In a diff, an emoji is one opaque glyph: `git diff` shows that the line changed, not
-what changed, and a reviewer cannot tell which pictogram replaced which without opening a
-codepoint table. They are not greppable without already knowing the codepoint — you cannot
-search a codebase for a character you cannot type. And inside a message body an emoji is one
-more character that has to survive `ParseMode.Html` escaping intact, on top of the escaping debt
-the feature backlog already owes to F7 — one more way for a reminder to fail for a reason that
-has nothing to do with what it says. None of that buys anything a word would not.
+tables — the reference rules above and directory-tree diagrams — whose alignment depends on
+every character being one column wide; a pictogram silently breaks that for whoever's
+renderer disagrees with the author's. In a diff, an emoji is one opaque glyph: `git diff`
+shows that the line changed, not what changed, and a reviewer cannot tell which pictogram
+replaced which without opening a codepoint table. They are not greppable without already
+knowing the codepoint — you cannot search a codebase for a character you cannot type. And inside
+a message body an emoji is one more character that has to survive `ParseMode.Html` escaping
+intact, on top of the escaping debt already owed to F7 — one more way for a reminder to fail for
+a reason that has nothing to do with what it says. None of that buys anything a word would not.
 
 So: use the word, or use nothing. The due-reminder message is the task title alone, with no
 prefix — it arrives from the assistant, in a chat only the assistant writes to, so there is no

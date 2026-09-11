@@ -7,11 +7,11 @@ namespace Assistant.Interfaces;
 /// names.
 /// </summary>
 /// <remarks>
-/// The model returns absolute local times with no offset (spec §5.4) as raw text, so this is
-/// also where that text is parsed -- not a step a caller performs first. Something has to say
-/// which zone a reading belongs to and what to do when the wall clock is not a reliable guide:
-/// the hour that does not exist on a spring-forward night, the hour that happens twice on a
-/// fall-back night, and times so far from now that the model has most likely misread the date.
+/// The model returns absolute local times with no offset as raw text, so this is also where
+/// that text is parsed -- not a step a caller performs first. Something has to say which zone a
+/// reading belongs to and what to do when the wall clock is not a reliable guide: the hour that
+/// does not exist on a spring-forward night, the hour that happens twice on a fall-back night,
+/// and times so far from now that the model has most likely misread the date.
 /// </remarks>
 public interface ILocalTimeResolver
 {

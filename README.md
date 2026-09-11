@@ -36,7 +36,7 @@ LLM APIs are stubbed with WireMock and Postgres comes from Docker Compose.
 Fork, `dotnet test`, done. The same suite runs automatically on a fork's pull
 request, with zero credentials configured, via `.github/workflows/ci.yml`.
 See [AGENTS.md](./AGENTS.md) for every command and
-[docs/design/](./docs/design/) for why the system is shaped the way it is.
+[docs/conventions.md](./docs/conventions.md) for the code conventions.
 
 ## Licence
 

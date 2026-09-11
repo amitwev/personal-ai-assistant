@@ -6,10 +6,10 @@ namespace Assistant.Interfaces;
 /// Reaches a chat model with the owner's text and returns the tool call it chose.
 /// </summary>
 /// <remarks>
-/// A transport abstraction, not one of spec §3.6's behaviour seams: it has exactly one
-/// production implementation, <c>AiClient</c>, and still does after this slice changes
-/// <c>AskAsync</c>'s return type — a modification, not an extension. The seam this slice grows
-/// is <see cref="IAssistantTool"/>, not this interface.
+/// A transport abstraction, not a behaviour seam: it has exactly one production implementation,
+/// <c>AiClient</c>, and still does after this slice changes <c>AskAsync</c>'s return type — a
+/// modification, not an extension. The seam this slice grows is <see cref="IAssistantTool"/>,
+/// not this interface.
 /// </remarks>
 public interface IAiClient
 {

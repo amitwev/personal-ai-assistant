@@ -160,7 +160,7 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
     /// <para>
     /// This test does not check the reply's exact text: that check duplicated
     /// <see cref="Listener_OwnerSendsAMessageWithADueTime_StoresItAndRepliesWithTheDueTimeAndTheDoneAndScheduleButtons"/>,
-    /// which spec §7.2 forbids. What this test alone proves is that the stranger's message
+    /// which AGENTS.md forbids. What this test alone proves is that the stranger's message
     /// produced no second reply.
     /// </para>
     /// </remarks>
@@ -238,8 +238,8 @@ public sealed class TelegramListenerTests(PostgresFixture postgres, WireMockFixt
     /// <remarks>
     /// Whether a row was written for each of these is proven once, at the tool level, by
     /// <c>CreateTaskToolTests</c> -- repeating that proof here through a real Telegram round
-    /// trip would duplicate coverage spec §7.2 forbids. The unregistered-tool-name row has no
-    /// such proof anywhere else, and needs none: <c>MessageHandler</c> only calls an
+    /// trip would duplicate coverage in the way AGENTS.md forbids. The unregistered-tool-name
+    /// row has no such proof anywhere else, and needs none: <c>MessageHandler</c> only calls an
     /// <see cref="IAssistantTool"/> once one has actually been found, so there is no code path
     /// from an unmatched name to a persisted row to test in the first place.
     /// </remarks>

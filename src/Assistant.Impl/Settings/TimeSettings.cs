@@ -8,9 +8,8 @@ namespace Assistant.Impl.Settings;
 /// </summary>
 /// <remarks>
 /// One zone serves the whole assistant, because it serves one person. Per-user zones are
-/// deferred (spec §12.7); binding this one from configuration rather than naming it in code is
-/// not (spec §11.4) — a hardcoded zone would block every contributor outside Israel in their
-/// first five minutes.
+/// deferred; binding this one from configuration rather than naming it in code is not — a
+/// hardcoded zone would block every contributor outside Israel in their first five minutes.
 /// </remarks>
 public sealed class TimeSettings : IValidatableConfig
 {

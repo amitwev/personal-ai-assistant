@@ -82,8 +82,7 @@ public static class ImplServiceCollectionExtensions
     /// <c>AddAssistantAi</c> for the <see cref="IEnumerable{IAssistantTool}"/>
     /// <see cref="Telegram.MessageHandler"/> dispatches a tool call against.
     /// Handlers and task actions are registered scoped, not singleton, so
-    /// <see cref="Telegram.TelegramListener"/> can resolve them from a scope it opens per update;
-    /// see docs/tech-debt.md.
+    /// <see cref="Telegram.TelegramListener"/> can resolve them from a scope it opens per update.
     /// </remarks>
     public static IServiceCollection AddAssistantListener(this IServiceCollection services)
     {
