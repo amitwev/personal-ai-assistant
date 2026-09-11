@@ -27,3 +27,8 @@ Thumbs.db
 
 # Agent worktrees
 .claude/worktrees/
+
+# Planning docs and superseded specs — kept on disk, not tracked
+docs/plans/
+docs/design/slice-1-reminders.md
+docs/design/2026-08-22-slice-1-feature-backlog.md

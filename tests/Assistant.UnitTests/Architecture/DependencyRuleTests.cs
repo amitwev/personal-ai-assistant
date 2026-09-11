@@ -72,8 +72,8 @@ public class DependencyRuleTests
     /// Then the build fails.
     /// </summary>
     /// <remarks>
-    /// Models are anemic by design (§4.1), so <c>TaskService</c> is the only place the invariants
-    /// that govern a task's lifecycle can be enforced (§4.2). A second writer could set one field
+    /// Models are anemic by design, so <c>TaskService</c> is the only place the invariants
+    /// that govern a task's lifecycle can be enforced. A second writer could set one field
     /// of a paired mutation — for example stamping <c>ReminderSentAt</c> without <c>UpdatedAt</c>
     /// — without setting its partner, silently breaking the rule the single writer exists to
     /// protect. NetArchTest's <c>HaveDependencyOn</c> works on namespaces, so this rule is checked

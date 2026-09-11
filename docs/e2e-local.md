@@ -268,7 +268,7 @@ This is the one step in this file a test suite cannot substitute for: `CallbackR
 `TelegramNotifierTests` already prove every wire shape byte for byte, but only tapping a real
 button on a real phone proves Telegram itself renders one. This step is the owner's own to run --
 no agent may run the worker against real Telegram (it needs a real bot token and sends a real
-message) -- and it is F6's own `observable` requirement (backlog §1).
+message) -- and it is F6's own `observable` requirement.
 
 The reminder also carries a Schedule button next to Done. Tap it: the message keeps its text but
 the keyboard swaps to `+1h` and Back -- proof that `ShowKeyboardAsync` reached the app, not just

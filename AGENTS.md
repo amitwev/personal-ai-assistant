@@ -102,9 +102,3 @@ clients are Refit interfaces, and no emoji anywhere in the repository.
 - Mark a reminder sent before it has actually been sent.
 - Put an emoji anywhere: source, tests, docs, commit messages, or bot
   message text. Use a word.
-
-## Design
-
-`docs/design/slice-1-reminders.md` is the approved specification. Read the
-relevant section before any structural change, and update it in the same
-commit if the change alters a documented decision.
