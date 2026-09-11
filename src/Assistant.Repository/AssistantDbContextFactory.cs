@@ -21,7 +21,7 @@ internal sealed class AssistantDbContextFactory : IDesignTimeDbContextFactory<As
     {
         var options = new DbContextOptionsBuilder<AssistantDbContext>()
             .UseNpgsql(
-                "Host=localhost;Port=55432;Database=assistant_test;Username=assistant;Password=assistant")
+                "Host=localhost;Port=15432;Database=assistant_test;Username=assistant;Password=assistant")
             .Options;
 
         return new AssistantDbContext(options);

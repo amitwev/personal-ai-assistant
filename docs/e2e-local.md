@@ -49,9 +49,9 @@ Settings bind by section name, double underscore for nesting:
 docker compose -f compose.test.yaml up -d
 ```
 
-This brings up two containers: `postgres-test` (Postgres 16, host port 55432, database
+This brings up two containers: `postgres-test` (Postgres 16, host port 15432, database
 `assistant_test`, user `assistant`, password `assistant`) and `wiremock` (the Telegram stub,
-host port 58080). The database and credentials above belong to the test suite; the walkthrough
+host port 18080). The database and credentials above belong to the test suite; the walkthrough
 below points the worker at a different, throwaway database on the same server instead of
 touching `assistant_test`.
 
@@ -64,7 +64,7 @@ which is gitignored so it never reaches the public repository:
 ```json
 {
   "DatabaseSettings": {
-    "ConnectionString": "Host=localhost;Port=55432;Database=assistant;Username=assistant;Password=assistant"
+    "ConnectionString": "Host=localhost;Port=15432;Database=assistant;Username=assistant;Password=assistant"
   }
 }
 ```
@@ -82,12 +82,12 @@ this run.
 ### 3. Run the worker against the stub
 
 ```bash
-DatabaseSettings__ConnectionString="Host=localhost;Port=55432;Database=assistant_e2e;Username=assistant;Password=assistant" \
+DatabaseSettings__ConnectionString="Host=localhost;Port=15432;Database=assistant_e2e;Username=assistant;Password=assistant" \
 TelegramSettings__BotToken="111111:AAFakeTokenForLocalStubRunsOnly_xxxxx" \
 TelegramSettings__OwnerChatId="<your-chat-id>" \
-TelegramSettings__BaseUrl="http://localhost:58080" \
+TelegramSettings__BaseUrl="http://localhost:18080" \
 AiSettings__ApiKey="stub-key-not-checked" \
-AiSettings__BaseUrl="http://localhost:58080" \
+AiSettings__BaseUrl="http://localhost:18080" \
 dotnet run --project src/Assistant.Worker
 ```
 
@@ -157,7 +157,7 @@ entry to the stub's request log roughly once per second. The raw `__admin/reques
 therefore mostly `getUpdates` polls, not the reminder — filter to `sendMessage`:
 
 ```bash
-curl -s http://localhost:58080/__admin/requests \
+curl -s http://localhost:18080/__admin/requests \
   | python3 -c "import json,sys; [print(e['Request']['Body']) for e in json.load(sys.stdin) if e['Request']['Path'].endswith('/sendMessage')]"
 ```
 
@@ -192,7 +192,7 @@ a half tick intervals — and count the stub's `sendMessage` requests again, fil
 `getUpdates` polling the same way as step 5:
 
 ```bash
-curl -s http://localhost:58080/__admin/requests \
+curl -s http://localhost:18080/__admin/requests \
   | python3 -c "import json,sys; print(sum(1 for e in json.load(sys.stdin) if e['Request']['Path'].endswith('/sendMessage')))"
 ```
 
@@ -207,7 +207,7 @@ stub:
 ```bash
 docker compose -f compose.test.yaml exec -T postgres-test psql -U assistant -d postgres \
   -c 'DROP DATABASE assistant_e2e;'
-curl -s -X POST http://localhost:58080/__admin/requests/reset
+curl -s -X POST http://localhost:18080/__admin/requests/reset
 ```
 
 Leave the containers running if you plan to repeat the walkthrough; otherwise take them down

@@ -16,7 +16,7 @@ namespace Assistant.IntegrationTests.Infrastructure;
 /// </remarks>
 public sealed class WireMockFixture : IAsyncLifetime
 {
-    private const string DefaultUrl = "http://localhost:58080";
+    private const string DefaultUrl = "http://localhost:18080";
 
     private static readonly Guid PendingUpdatesMapping =
         new("f7000000-0000-0000-0000-000000000001");

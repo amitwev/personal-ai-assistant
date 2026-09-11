@@ -14,7 +14,7 @@ namespace Assistant.IntegrationTests.Infrastructure;
 public sealed class PostgresFixture : IAsyncLifetime
 {
     private const string DefaultConnectionString =
-        "Host=localhost;Port=55432;Database=assistant_test;Username=assistant;Password=assistant;Include Error Detail=true";
+        "Host=localhost;Port=15432;Database=assistant_test;Username=assistant;Password=assistant;Include Error Detail=true";
 
     private Respawner? _respawner;
 
